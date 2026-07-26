@@ -1,0 +1,13 @@
+{
+  "display_name": "浮生錄",
+  "loading_order": 100,
+  "dependencies": [],
+  "js": "src/index.js",
+  "css": "src/style.css",
+  "author": "fushenglu contributors",
+  "version": "0.1.0",
+  "auto_update": false,
+  "hooks": {
+    "activate": "onActivate"
+  }
+}

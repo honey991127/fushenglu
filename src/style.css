@@ -1,0 +1,235 @@
+.fushenglu-extension,
+.fushenglu-extension * {
+  box-sizing: border-box;
+}
+
+.fushenglu-entry {
+  position: fixed;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  z-index: 2147482999;
+  min-width: 88px;
+  min-height: 46px;
+  border: 1px solid rgba(255, 239, 209, 0.36);
+  border-radius: 999px;
+  padding: 10px 18px;
+  color: #fff8e8;
+  background: linear-gradient(145deg, #6d3429, #3d1d25);
+  box-shadow: 0 10px 30px rgba(20, 8, 12, 0.38);
+  font: 600 16px/1.2 ui-serif, "Songti TC", "Noto Serif TC", serif;
+  letter-spacing: 0.12em;
+  touch-action: manipulation;
+}
+
+.fushenglu-entry:focus-visible,
+.fushenglu-fullscreen button:focus-visible,
+.fushenglu-input:focus-visible {
+  outline: 3px solid #e7bd6f;
+  outline-offset: 2px;
+}
+
+.fushenglu-fullscreen[hidden] {
+  display: none !important;
+}
+
+.fushenglu-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  flex-direction: column;
+  overflow: hidden;
+  color: #f7efe2;
+  background:
+    radial-gradient(circle at 88% 8%, rgba(151, 84, 61, 0.34), transparent 34%),
+    linear-gradient(165deg, #25161c 0%, #17131a 56%, #111218 100%);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "PingFang TC",
+    "Noto Sans TC", sans-serif;
+  overscroll-behavior: contain;
+}
+
+.fushenglu-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding:
+    calc(18px + env(safe-area-inset-top))
+    max(20px, env(safe-area-inset-right))
+    16px
+    max(20px, env(safe-area-inset-left));
+  border-bottom: 1px solid rgba(255, 239, 209, 0.14);
+  background: rgba(25, 15, 20, 0.78);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.fushenglu-header h1,
+.fushenglu-card h2,
+.fushenglu-eyebrow {
+  margin: 0;
+}
+
+.fushenglu-header h1 {
+  font: 600 27px/1.2 ui-serif, "Songti TC", "Noto Serif TC", serif;
+  letter-spacing: 0.14em;
+}
+
+.fushenglu-eyebrow {
+  margin-bottom: 4px;
+  color: #d6b77b;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+}
+
+.fushenglu-close,
+.fushenglu-actions button {
+  min-height: 44px;
+  border: 1px solid rgba(255, 239, 209, 0.22);
+  border-radius: 12px;
+  padding: 9px 15px;
+  color: #fff8e8;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+  touch-action: manipulation;
+}
+
+.fushenglu-close {
+  flex: 0 0 auto;
+}
+
+.fushenglu-content {
+  width: min(100%, 680px);
+  margin: 0 auto;
+  padding:
+    22px
+    max(18px, env(safe-area-inset-right))
+    calc(28px + env(safe-area-inset-bottom))
+    max(18px, env(safe-area-inset-left));
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.fushenglu-card {
+  margin-bottom: 16px;
+  border: 1px solid rgba(255, 239, 209, 0.14);
+  border-radius: 18px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.055);
+  box-shadow: 0 16px 48px rgba(9, 6, 9, 0.18);
+}
+
+.fushenglu-card h2 {
+  margin-bottom: 14px;
+  color: #f0d6a2;
+  font: 600 18px/1.35 ui-serif, "Songti TC", "Noto Serif TC", serif;
+  letter-spacing: 0.06em;
+}
+
+.fushenglu-chat-id,
+.fushenglu-status {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fushenglu-chat-id {
+  color: #fffaf0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+}
+
+.fushenglu-help {
+  margin: -5px 0 18px;
+  color: #c9bdaf;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.fushenglu-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #e6ded3;
+  font-size: 14px;
+}
+
+.fushenglu-input {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid rgba(255, 239, 209, 0.22);
+  border-radius: 12px;
+  padding: 11px 13px;
+  color: #fffaf2;
+  background: rgba(4, 3, 5, 0.35);
+  font: inherit;
+}
+
+.fushenglu-input::placeholder {
+  color: #998d86;
+}
+
+.fushenglu-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.fushenglu-actions button:first-child {
+  border-color: rgba(232, 190, 110, 0.45);
+  background: linear-gradient(145deg, #76402f, #572a2a);
+}
+
+.fushenglu-actions button:disabled,
+.fushenglu-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.fushenglu-status {
+  margin-top: 16px;
+  border-radius: 12px;
+  padding: 12px 13px;
+  color: #d8cfc4;
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.fushenglu-status[data-kind="success"] {
+  color: #d9efd8;
+  background: rgba(49, 102, 67, 0.26);
+}
+
+.fushenglu-status[data-kind="error"] {
+  color: #ffd7d1;
+  background: rgba(139, 45, 50, 0.28);
+}
+
+html.fushenglu-is-open {
+  overflow: hidden;
+}
+
+@media (min-width: 700px) {
+  .fushenglu-content {
+    padding-top: 34px;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .fushenglu-entry {
+    transition: transform 150ms ease, box-shadow 150ms ease;
+  }
+
+  .fushenglu-entry:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 34px rgba(20, 8, 12, 0.46);
+  }
+}
