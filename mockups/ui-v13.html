@@ -1,0 +1,1074 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>遊歷簿互動樣板 v13</title>
+<style>
+:root{--bg:#f3efe6;--card:#fffdf8;--ink:#29302c;--muted:#79776e;--line:#ded6c8;--green:#4d7563;--soft:#e5eee9;--gold:#976f2e;--red:#97504a;--blue:#516f8a}*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC",sans-serif}button,input,textarea,select{font:inherit}.app{max-width:520px;margin:auto;min-height:100vh;padding-bottom:calc(172px + env(safe-area-inset-bottom))}.top{position:sticky;top:0;z-index:20;background:rgba(243,239,230,.95);backdrop-filter:blur(14px);padding:calc(12px + env(safe-area-inset-top)) 15px 12px;border-bottom:1px solid var(--line)}.bar{display:flex;justify-content:space-between;align-items:center;gap:10px}.eyebrow{font-size:11px;letter-spacing:.1em;color:var(--gold);font-weight:800}.top h1{font-size:19px;margin:2px 0}.top-actions{display:flex;gap:7px}.pill{border:0;border-radius:999px;background:var(--soft);color:var(--green);padding:8px 10px;font-weight:800}.pill.pending{background:#f4e4df;color:#8d5149}.content{padding:14px}.screen{display:none}.screen.active{display:block}.hero,.card,.row{background:var(--card);border:1px solid var(--line);box-shadow:0 6px 20px rgba(60,52,40,.06)}.hero{border-radius:23px;padding:18px;background:linear-gradient(135deg,#fffdf8,#eaf1ed)}.hero h2{margin:6px 0 4px;font-size:24px}.sub{font-size:12px;color:var(--muted);line-height:1.55}.chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}.chip,.tag{border-radius:999px;font-size:11px;padding:6px 9px}.chip{background:white;border:1px solid var(--line)}.tag{background:var(--soft);color:var(--green);white-space:nowrap}.tag.warn{background:#f4e6dd;color:#8c5d42}.tag.gray{background:#ece9e3;color:#716e67}.tag.blue{background:#e7edf3;color:var(--blue)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:11px}.card{border-radius:17px;padding:14px}.card h3{font-size:14px;margin:0 0 8px}.big{font-size:18px;font-weight:800}.title{display:flex;justify-content:space-between;align-items:center;margin:19px 2px 9px}.title h2{font-size:17px;margin:0}.link{border:0;background:none;color:var(--green);font-weight:800}.list{display:flex;flex-direction:column;gap:9px}.row{border-radius:15px;padding:13px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.row strong{font-size:14px;display:block}.small{font-size:12px;color:var(--muted);display:block;margin-top:4px;line-height:1.45}.btn{border:0;border-radius:12px;background:var(--green);color:#fff;padding:10px 12px;font-weight:800}.btn.small{font-size:12px;padding:8px 9px}.btn.ghost{background:var(--soft);color:var(--green)}.btn.secondary{background:#fff;color:var(--ink);border:1px solid var(--line)}.btn.danger{background:var(--red)}.tabs{display:flex;gap:7px;overflow:auto;margin-bottom:12px}.tabs button{border:1px solid var(--line);border-radius:999px;background:#fff;padding:8px 12px;white-space:nowrap}.tabs button.active{background:var(--green);border-color:var(--green);color:white}.progress{height:8px;background:#e8e3da;border-radius:999px;margin-top:7px;overflow:hidden}.progress i{height:100%;display:block;background:var(--green)}.notice{background:#f3eee5;border:1px solid #e5dacb;border-radius:14px;padding:12px;font-size:12px;line-height:1.55}.price{font-size:12px;font-weight:800;color:var(--gold);margin-top:6px}.field{margin-bottom:11px}.field label{display:block;font-size:12px;color:var(--muted);font-weight:800;margin-bottom:6px}input,select,textarea{width:100%;border:1px solid var(--line);border-radius:13px;padding:11px;background:#fff;color:var(--ink)}textarea{min-height:116px}.actions{display:flex;gap:8px;flex-wrap:wrap}.roundbar{position:fixed;z-index:30;left:50%;transform:translateX(-50%);bottom:calc(72px + env(safe-area-inset-bottom));width:min(490px,calc(100% - 22px));background:#263a31;color:#fff;padding:9px 12px;border-radius:17px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 12px 34px rgba(20,30,25,.3)}.roundbar small{color:#dbe5df}.nav{position:fixed;z-index:25;bottom:0;left:50%;transform:translateX(-50%);width:min(520px,100%);display:grid;grid-template-columns:repeat(5,1fr);background:rgba(255,253,248,.97);backdrop-filter:blur(15px);border-top:1px solid var(--line);padding:7px 7px calc(7px + env(safe-area-inset-bottom))}.nav button{border:0;background:none;color:var(--muted);font-size:11px;padding:7px 2px}.nav button b{display:block;font-size:19px}.nav button.active{color:var(--green)}.modal{position:fixed;inset:0;z-index:50;background:rgba(20,25,22,.43);display:none;align-items:flex-end;justify-content:center}.modal.open{display:flex}.sheet{width:min(520px,100%);max-height:90vh;overflow:auto;background:var(--card);border-radius:23px 23px 0 0;padding:18px 15px calc(20px + env(safe-area-inset-bottom))}.sheet h2{margin:0 0 5px}.divider{height:1px;background:var(--line);margin:14px 0}.toast{position:fixed;top:calc(70px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:80;background:#263a31;color:#fff;padding:9px 13px;border-radius:999px;font-size:12px;display:none}.toast.show{display:block}.skill-group{margin-bottom:14px}.skill-group h3{font-size:13px;color:var(--gold);margin:0 0 8px 3px}.skill-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.skill{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px;display:flex;justify-content:space-between;align-items:center}.skill b{font-size:13px}.skill span{font-size:20px;font-weight:900;color:var(--green)}.goal{padding:13px;border-left:4px solid var(--green);background:var(--card);border-radius:4px 14px 14px 4px;border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.goal.done{border-left-color:#789886}.goal.pending{border-left-color:#bc8c49}.wardrobe-layout{display:grid;gap:11px}.slot-row{display:grid;grid-template-columns:68px 1fr;gap:10px;align-items:center}.slot-label{font-size:12px;color:var(--muted);font-weight:800}.outfit-summary{background:linear-gradient(135deg,#eef3ef,#fff8ea);border:1px solid var(--line);border-radius:17px;padding:14px}.saved-outfit{display:flex;justify-content:space-between;gap:10px;align-items:center}.place-group{margin-bottom:16px}.place-group h3{font-size:14px;color:var(--gold);margin:0 0 8px}.place{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:13px;margin-bottom:8px}.place-head{display:flex;justify-content:space-between;gap:10px}.mail-tabs-panel{display:none}.mail-tabs-panel.active{display:block}.letter{background:#fffaf0;border:1px solid #e6dac4;border-radius:16px;padding:15px;line-height:1.75;font-size:14px}.confirm-card{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:13px}.confirm-card.resolved{opacity:.55}.exam-section{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:9px}.checklist{margin:8px 0 0;padding:0;list-style:none}.checklist li{padding:7px 0;border-bottom:1px solid #eee7dc;font-size:13px}.checklist li:last-child{border-bottom:0}.kv{display:grid;grid-template-columns:94px 1fr;gap:7px;font-size:13px;margin-top:8px}.kv b{color:var(--muted)}
+
+.assistant-modal{background:var(--bg);align-items:stretch}
+.assistant-shell{width:min(520px,100%);height:100vh;margin:auto;background:var(--bg);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}
+.chat-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);background:rgba(255,253,248,.96)}
+.chat-head button{border:0;background:none;font-size:22px;color:var(--green)}
+.chat-title{font-weight:850}
+.chat-log{flex:1;overflow:auto;padding:16px 14px 110px;display:flex;flex-direction:column;gap:10px}
+.bubble{max-width:86%;padding:11px 13px;border-radius:17px;line-height:1.55;font-size:14px;white-space:pre-wrap}
+.bubble.user{align-self:flex-end;background:var(--green);color:white;border-bottom-right-radius:5px}
+.bubble.ai{align-self:flex-start;background:var(--card);border:1px solid var(--line);border-bottom-left-radius:5px}
+.chat-compose{position:absolute;left:50%;transform:translateX(-50%);bottom:0;width:min(520px,100%);padding:10px 12px calc(10px + env(safe-area-inset-bottom));display:flex;gap:8px;background:rgba(255,253,248,.97);border-top:1px solid var(--line)}
+.chat-compose textarea{min-height:44px;max-height:100px;resize:none}
+.thread-row{cursor:pointer}
+.thread-row:active{transform:scale(.995)}
+.thread-avatar{width:42px;height:42px;flex:0 0 42px;border-radius:50%;display:grid;place-items:center;background:var(--soft);color:var(--green);font-weight:850}
+.thread-main{min-width:0;flex:1}
+.thread-preview{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.letter-thread{display:flex;flex-direction:column;gap:12px}
+.letter-card{padding:14px;border-radius:16px;line-height:1.7;font-size:14px;border:1px solid var(--line);background:#fffaf0}
+.letter-card.outgoing{margin-left:28px;background:#eef4f0}
+.letter-card.incoming{margin-right:28px}
+.letter-meta{font-size:11px;color:var(--muted);margin-bottom:6px}
+.thread-modal{background:var(--bg);align-items:stretch}
+.thread-shell{width:min(520px,100%);height:100vh;margin:auto;background:var(--bg);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}
+.thread-body{flex:1;overflow:auto;padding:14px 14px 180px}
+.thread-compose{position:absolute;left:50%;transform:translateX(-50%);bottom:0;width:min(520px,100%);background:rgba(255,253,248,.98);border-top:1px solid var(--line);padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
+.thread-compose textarea{min-height:72px}
+
+
+.library-toolbar{display:flex;gap:8px;margin:12px 0 10px}
+.library-toolbar input{flex:1}
+.filter-strip{display:flex;gap:7px;overflow:auto;padding-bottom:5px;margin-bottom:10px}
+.filter-strip button{border:1px solid var(--line);background:#fff;padding:7px 11px;border-radius:999px;white-space:nowrap;color:var(--muted)}
+.filter-strip button.active{background:var(--green);border-color:var(--green);color:#fff}
+.library-list{display:flex;flex-direction:column;gap:9px}
+.library-item{display:flex;align-items:center;gap:12px;padding:12px 13px;border:1px solid var(--line);border-radius:16px;background:var(--card);cursor:pointer}
+.library-item:active{transform:scale(.995)}
+.library-mark{width:42px;height:42px;flex:0 0 42px;border-radius:13px;display:grid;place-items:center;background:var(--soft);color:var(--green);font-weight:900}
+.library-copy{min-width:0;flex:1}
+.library-copy strong{display:block;font-size:14px}
+.library-copy .small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.library-side{text-align:right;flex:0 0 auto}
+.library-side .tag{display:inline-block}
+.detail-grid{display:grid;grid-template-columns:90px 1fr;gap:10px 12px;margin-top:14px;font-size:13px}
+.detail-grid dt{color:var(--muted)}
+.detail-grid dd{margin:0;line-height:1.55}
+.empty-state{padding:28px 12px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:16px}
+.assistant-actions{margin-left:auto;display:flex;gap:4px}
+.assistant-actions button{font-size:13px!important;padding:6px 8px!important}
+
+
+.setting-section{padding:13px 0;border-bottom:1px solid var(--line)}
+.setting-section:last-child{border-bottom:0}
+.setting-section h3{font-size:14px;margin:0 0 10px}
+.secret-wrap{position:relative}
+.secret-wrap input{padding-right:66px}
+.secret-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:var(--soft);color:var(--green);padding:6px 9px;border-radius:9px;font-size:12px}
+.connection-state{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);margin-top:8px}
+.connection-dot{width:8px;height:8px;border-radius:50%;background:#aaa}
+.connection-dot.ok{background:#4c8c68}
+.setting-row{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.toggle-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:7px 0}
+.switch{position:relative;width:44px;height:26px;flex:0 0 44px}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;border-radius:999px;background:#d8d4ca;transition:.2s}
+.slider:before{content:"";position:absolute;width:20px;height:20px;left:3px;top:3px;border-radius:50%;background:white;box-shadow:0 2px 5px rgba(0,0,0,.16);transition:.2s}
+.switch input:checked + .slider{background:var(--green)}
+.switch input:checked + .slider:before{transform:translateX(18px)}
+
+
+.preview-block{margin-top:15px}
+.preview-block h3{font-size:14px;margin:0 0 9px}
+.preview-item{display:flex;align-items:flex-start;gap:9px;padding:10px 11px;border:1px solid var(--line);border-radius:14px;background:var(--card);margin-bottom:8px}
+.preview-item input[type="checkbox"]{width:18px;height:18px;flex:0 0 18px;margin-top:2px}
+.preview-copy{flex:1;min-width:0}
+.preview-copy strong{display:block;font-size:13px}
+.preview-copy .small{margin-top:3px}
+.preview-item select{width:auto;min-width:92px;padding:7px 8px;font-size:12px;border-radius:10px}
+.correction-result{display:none;margin-top:12px;padding:12px;border-radius:14px;background:var(--soft);border:1px solid #cfddd5}
+.correction-result.show{display:block}
+.admin-only{display:none}
+body.management-mode .admin-only{display:block}
+.module-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px 10px}
+.module-option{display:flex;align-items:center;justify-content:space-between;padding:9px 10px;border:1px solid var(--line);border-radius:13px;background:#fff}
+.module-option input{width:18px;height:18px}
+
+
+.rank-head{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin:4px 0 12px}
+.rank-head h2{margin:0;font-size:18px}
+.rank-summary{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px}
+.rank-summary .card{padding:12px}
+.rank-summary strong{display:block;font-size:20px}
+.rank-table{display:flex;flex-direction:column;gap:7px}
+.rank-row{display:grid;grid-template-columns:38px 1fr auto;gap:9px;align-items:center;padding:11px 12px;border:1px solid var(--line);border-radius:15px;background:var(--card)}
+.rank-row.me{border-color:#9fb9aa;background:#eef4f0}
+.rank-num{font-size:15px;font-weight:900;text-align:center;color:var(--muted)}
+.rank-num.top{color:#9a7333}
+.rank-name{min-width:0}
+.rank-name strong{display:block;font-size:14px}
+.rank-name .small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rank-score{text-align:right;font-weight:850;color:var(--green)}
+.rank-scope{display:flex;gap:7px;overflow:auto;margin-bottom:12px}
+.rank-scope button{border:1px solid var(--line);background:#fff;padding:7px 11px;border-radius:999px;white-space:nowrap}
+.rank-scope button.active{background:var(--green);border-color:var(--green);color:#fff}
+
+
+.activity-list{display:flex;flex-direction:column;gap:10px}
+.activity-card{padding:13px;border:1px solid var(--line);border-radius:17px;background:var(--card)}
+.activity-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.activity-card h3{font-size:15px;margin:0}
+.activity-card .small{margin-top:5px;line-height:1.5}
+.activity-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.activity-meta .chip{font-size:11px;padding:5px 8px}
+.activity-progress{height:7px;border-radius:999px;background:#ebe7de;overflow:hidden;margin-top:10px}
+.activity-progress i{display:block;height:100%;background:var(--green)}
+.activity-detail-grid{display:grid;grid-template-columns:90px 1fr;gap:9px 12px;margin-top:14px;font-size:13px}
+.activity-detail-grid dt{color:var(--muted)}
+.activity-detail-grid dd{margin:0;line-height:1.55}
+.status-open{background:#e6f0e9;color:#446a55}
+.status-upcoming{background:#eceae5;color:#6f6b63}
+.status-running{background:#e7edf5;color:#4f6782}
+.status-ended{background:#f0e7e3;color:#845c52}
+
+
+.evaluation-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.evaluation-card{padding:13px;border:1px solid var(--line);border-radius:16px;background:var(--card)}
+.evaluation-card .source{font-size:11px;color:var(--muted);margin-bottom:5px}
+.evaluation-card strong{display:block;font-size:15px}
+.evaluation-card .small{margin-top:5px;line-height:1.5}
+.review-quote{padding:12px 13px;border-left:3px solid #9fb9aa;background:#f3f7f4;border-radius:0 13px 13px 0;line-height:1.65;font-size:13px}
+.review-meta{font-size:11px;color:var(--muted);margin-top:6px}
+.effect-row{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border:1px solid var(--line);border-radius:14px;background:var(--card)}
+.effect-icon{width:32px;height:32px;flex:0 0 32px;border-radius:10px;background:var(--soft);display:grid;place-items:center;color:var(--green);font-weight:900}
+
+</style>
+</head>
+<body>
+<div class="app">
+<header class="top"><div class="bar"><div><h1>遊歷簿</h1></div><div class="top-actions"><div style="display:flex;gap:7px"><button class="pill" onclick="openAssistant()">問答</button><button class="pill" onclick="openSettings()">設定</button></div><button id="pendingTop" class="pill pending" onclick="openPending()">● 待確認 4</button></div></div></header>
+<main class="content">
+<section id="home" class="screen active">
+<div class="hero"><div class="eyebrow">大夏三年 · 三月十八日 · 辰時</div><h2>天衡宗 · 聽松院</h2><div class="chips"><span class="chip">靈石 18</span><span class="chip">宗門貢獻 26</span><span class="chip">練氣一層</span><span class="chip">未讀回信 1</span></div></div>
+<div class="grid"><div class="card"><h3>目前穿着</h3><div class="big" id="homeOutfit">白色弟子常服</div><div class="sub">青玉髮簪 · 軟底短靴</div></div><div class="card"><h3>修煉目標</h3><div class="big">穩定引導靈氣</div><div class="sub">按功法路線運行，途中不散亂</div></div></div>
+<div class="title"><h2>本週安排</h2><button class="link" onclick="show('sect');openSchoolTab()">查看詳情</button></div>
+<div class="list"><div class="row"><div><strong>清風劍訣基礎作業</strong><span class="small">完成前三式連貫練習 3 次</span></div><span class="tag">2 / 3</span></div><div class="row"><div><strong>靈草辨識圖譜</strong><span class="small">本週五前提交</span></div><span class="tag warn">剩 2 日</span></div><div class="row"><div><strong>外門季度考核</strong><span class="small">四月初一 · 已公布考核細則</span></div><button class="btn small ghost" onclick="openExam()">準備詳情</button></div></div>
+<div class="title"><h2>宗門動態</h2></div><div class="list"><div class="row"><div><strong>功勳閣已刷新本週庫存</strong><span class="small">本週新到一批外出執事帶回的物資。</span></div><button class="btn small ghost" onclick="show('sect')">查看</button></div><div class="row"><div><strong>春季靈植採購公告</strong><span class="small">百草谷提高三階聚靈草收購價，宗門採買處開始限量收購。</span></div><span class="tag blue">世界事件</span></div></div>
+</section>
+
+<section id="growth" class="screen">
+<div class="tabs"><button class="active" onclick="tab(this,'skills','growth')">技能</button><button onclick="tab(this,'cultivation','growth')">修煉</button><button onclick="tab(this,'evaluation','growth')">評價</button><button onclick="tab(this,'wardrobe','growth')">衣櫥</button></div>
+<div id="growth-skills">
+
+<div class="title"><h2>技能數值</h2><button class="link" onclick="toast('可編輯技能項目')">編輯</button></div>
+<div class="skill-group"><h3>修行與戰鬥</h3><div class="skill-grid"><div class="skill"><b>劍術</b><span>32</span></div><div class="skill"><b>身法</b><span>18</span></div><div class="skill"><b>靈力控制</b><span>27</span></div><div class="skill"><b>神識運用</b><span>12</span></div></div></div>
+<div class="skill-group"><h3>專業技藝</h3><div class="skill-grid"><div class="skill"><b>丹道</b><span>8</span></div><div class="skill"><b>陣法</b><span>5</span></div><div class="skill"><b>靈植</b><span>14</span></div><div class="skill"><b>醫術</b><span>6</span></div></div></div>
+<div class="skill-group"><h3>通識與生活</h3><div class="skill-grid"><div class="skill"><b>典籍學識</b><span>21</span></div><div class="skill"><b>觀察</b><span>16</span></div><div class="skill"><b>交涉</b><span>17</span></div><div class="skill"><b>書法</b><span>9</span></div></div></div>
+</div>
+<div id="growth-cultivation" style="display:none">
+<div class="hero"><div class="eyebrow">當前修為</div><h2>練氣一層</h2></div>
+<div class="title"><h2>目前階段目標</h2></div>
+<div class="list"><div class="goal done"><strong>能感覺到周圍靈氣</strong><span class="small">已完成。</span></div><div class="goal done"><strong>能把靈氣引入體內</strong><span class="small">已完成。</span></div><div class="goal pending"><strong>讓靈氣沿功法指定路線運行，途中不散亂</strong><span class="small">進度 2 / 3。</span></div><div class="goal"><strong>下一階段條件尚未完全確認</strong><span class="small">尚未確認。</span></div></div>
+<div class="title"><h2>最近修煉紀錄</h2></div><div class="list"><div class="row"><div><strong>三月十七日</strong><span class="small">靈氣運行到少陽脈時出現停滯，唐清晏指出不應急於銜接劍式。</span></div><span class="tag gray">聊天紀錄</span></div></div>
+</div>
+
+<div id="growth-evaluation" style="display:none">
+  <div class="title"><h2>目前評價</h2></div>
+  <div class="evaluation-grid">
+    <div class="evaluation-card">
+      <div class="source">傳功峰教習</div>
+      <strong>基礎尚穩</strong>
+      <div class="small">靈力控制不算突出，但能按指示修正，不容易在同一處反覆犯錯。</div>
+    </div>
+    <div class="evaluation-card">
+      <div class="source">事務堂紀錄</div>
+      <strong>辦事可靠</strong>
+      <div class="small">已完成兩件登記任務，交付物沒有缺漏，暫無逾期紀錄。</div>
+    </div>
+    <div class="evaluation-card">
+      <div class="source">丹鼎峰課業</div>
+      <strong>靈草基礎合格</strong>
+      <div class="small">常見藥草辨識已達課業要求，尚未形成明顯專長。</div>
+    </div>
+    <div class="evaluation-card">
+      <div class="source">演武台</div>
+      <strong>尚無公開評價</strong>
+      <div class="small">尚未參加正式演武。</div>
+    </div>
+  </div>
+
+  <div class="title"><h2>近期評語</h2></div>
+  <div class="list">
+    <div class="review-quote">「劍式還生，但你肯停下來重走一遍，這點比急著求快好。」<div class="review-meta">唐清晏 · 三月十七日 · 主線明確評語</div></div>
+    <div class="review-quote">「清單核得仔細，東西也沒有漏交。」<div class="review-meta">事務堂執事 · 三月十四日 · 任務交付</div></div>
+  </div>
+
+  <div class="title"><h2>評價帶來的影響</h2></div>
+  <div class="list">
+    <div class="effect-row"><div class="effect-icon">任</div><div><strong>可承接丁等單人差事</strong><span class="small">兩次任務均按時驗收。</span></div></div>
+    <div class="effect-row"><div class="effect-icon">藥</div><div><strong>可報名春季靈草辨識小試</strong><span class="small">已完成基礎藥草課。</span></div></div>
+    <div class="effect-row"><div class="effect-icon">薦</div><div><strong>尚未取得師長推薦</strong><span class="small">目前沒有正式推薦。</span></div></div>
+  </div>
+</div>
+
+<div id="growth-wardrobe" style="display:none">
+
+<div class="wardrobe-layout">
+<div class="outfit-summary"><div class="eyebrow">穿搭預覽</div><div class="big" id="outfitPreview">白色弟子常服＋青玉髮簪＋軟底短靴</div></div>
+<div class="card">
+<div class="slot-row"><div class="slot-label">頭飾</div><select class="wardrobeSelect" id="slotHead" onchange="updateOutfitPreview()"><option>青玉髮簪</option><option>白玉髮簪</option><option>無頭飾</option></select></div>
+<div class="divider"></div><div class="slot-row"><div class="slot-label">內搭</div><select class="wardrobeSelect" id="slotInner" onchange="updateOutfitPreview()"><option>素白內衫</option><option>淡青交領內衫</option></select></div>
+<div class="divider"></div><div class="slot-row"><div class="slot-label">外袍</div><select class="wardrobeSelect" id="slotOuter" onchange="updateOutfitPreview()"><option>白色弟子常服</option><option>青色練功服</option><option>月白外袍</option><option>淡杏色披帛</option><option>春祭限定禮服</option></select></div>
+<div class="divider"></div><div class="slot-row"><div class="slot-label">鞋履</div><select class="wardrobeSelect" id="slotShoes" onchange="updateOutfitPreview()"><option>軟底短靴</option><option>白色繡鞋</option><option>練功布鞋</option></select></div>
+<div class="divider"></div><div class="slot-row"><div class="slot-label">配飾</div><select class="wardrobeSelect" id="slotAccessory" onchange="updateOutfitPreview()"><option>無配飾</option><option>宗門腰牌</option><option>青玉佩</option></select></div>
+<button class="btn" style="width:100%;margin-top:14px" onclick="addCurrentOutfit()">加入本輪換裝</button>
+</div>
+<div class="title"><h2>最近加入衣櫥</h2></div>
+<div class="row"><div><strong>淡杏色披帛</strong><span class="small">三月十八日，宋昭昭贈予。</span></div><span class="tag blue">主線獲得</span></div>
+<div class="title"><h2>已保存套裝</h2><button class="link" onclick="toast('已保存')">保存目前搭配</button></div>
+<div class="list"><div class="row saved-outfit"><div><strong>日常</strong><span class="small">青玉髮簪／素白內衫／白色弟子常服／軟底短靴</span></div><button class="btn small ghost" onclick="loadOutfit('daily')">載入</button></div><div class="row saved-outfit"><div><strong>練功</strong><span class="small">無頭飾／淡青交領內衫／青色練功服／練功布鞋</span></div><button class="btn small ghost" onclick="loadOutfit('training')">載入</button></div></div>
+</div>
+</div>
+</section>
+
+<section id="sect" class="screen">
+<div class="tabs"><button class="active" onclick="tab(this,'daily','sect')">每日商店</button><button onclick="tab(this,'weekly','sect')">每週商店</button><button id="schoolTab" onclick="tab(this,'school','sect')">作業／考核</button><button onclick="tab(this,'activities','sect');renderActivities()">期間活動</button><button onclick="tab(this,'ranking','sect');renderRanking()">排名榜</button></div>
+<div id="sect-daily"><div class="title"><h2>事務堂日供</h2><span class="sub">辰時刷新</span></div><div class="list"><div class="row"><div><strong>傳音紙鶴 ×1</strong><span class="small">書信用品 · 庫存 6</span><div class="price">1 靈石</div></div><button class="btn small" onclick="buy('傳音紙鶴',1)">加入</button></div><div class="row"><div><strong>回靈丹 ×1</strong><span class="small">練氣至築基可用 · 庫存 2</span><div class="price">3 靈石</div></div><button class="btn small" onclick="buy('回靈丹',3)">加入</button></div><div class="row"><div><strong>二階火遁符</strong><span class="small">你目前無法完整驅使 · 庫存 1</span><div class="price">12 靈石</div></div><button class="btn small" onclick="buy('二階火遁符',12)">加入</button></div><div class="row"><div><strong>煉器用玄銅 ×3</strong><span class="small">與目前主修無關 · 庫存 3</span><div class="price">7 靈石</div></div><button class="btn small" onclick="buy('煉器用玄銅',7)">加入</button></div></div></div>
+<div id="sect-weekly" style="display:none"><div class="title"><h2>功勳閣周選</h2></div><div class="list"><div class="row"><div><strong>《流雲步》殘卷</strong><span class="small">需要內門資格</span><div class="price">8 靈石＋30 貢獻</div></div><button class="btn small secondary" disabled>資格不足</button></div><div class="row"><div><strong>元嬰護心玉</strong><span class="small">高階法器 · 庫存 1</span><div class="price">80 靈石＋120 貢獻</div></div><button class="btn small secondary" disabled>無法使用</button></div><div class="row"><div><strong>春祭限定禮服</strong><span class="small">衣櫥 · 限購 1</span><div class="price">10 靈石＋12 貢獻</div></div><button class="btn small" onclick="buy('春祭限定禮服',10)">加入</button></div></div></div>
+<div id="sect-school" style="display:none">
+<div class="title"><h2>本週作業</h2></div><div class="list"><div class="row"><div><strong>清風劍訣基礎作業</strong><span class="small">要求：前三式連貫練習 3 次；目前 2 / 3</span></div><span class="tag warn">進行中</span></div><div class="row"><div><strong>靈草辨識圖譜</strong><span class="small">提交一份包含 12 種常見靈草的圖譜；截止本週五</span></div><span class="tag warn">剩 2 日</span></div><div class="row"><div><strong>無用之學：碑帖臨摹</strong><span class="small">本週自由選修；完成後增加書法相關數值</span></div><span class="tag gray">可選</span></div></div>
+<div class="title"><h2>外門季度考核</h2><button class="link" onclick="openExam()">完整細則</button></div><div class="card"><strong>四月初一 · 傳功峰</strong><span class="small">報名截止：三月二十七日。考核包含理論、靈力控制、主修技能與平時紀錄。</span><div class="actions" style="margin-top:12px"><button class="btn ghost" onclick="openExam()">查看完整細則</button></div></div>
+</div>
+
+<div id="sect-activities" style="display:none">
+  <div class="title"><h2>期間活動</h2></div>
+  <div class="filter-strip" id="activityFilters">
+    <button class="active" data-filter="全部" onclick="setActivityFilter(this)">全部</button>
+    <button data-filter="可報名" onclick="setActivityFilter(this)">可報名</button>
+    <button data-filter="進行中" onclick="setActivityFilter(this)">進行中</button>
+    <button data-filter="即將開始" onclick="setActivityFilter(this)">即將開始</button>
+    <button data-filter="已結束" onclick="setActivityFilter(this)">已結束</button>
+  </div>
+  <div id="activityList" class="activity-list"></div>
+</div>
+
+<div id="sect-ranking" style="display:none">
+  <div class="rank-head">
+    <div><div class="eyebrow">宗門公開榜冊</div><h2 id="rankingTitle">演武台旬榜</h2></div>
+    <span id="rankingUpdated" class="sub"></span>
+  </div>
+
+  <div class="rank-scope" id="rankingTabs">
+    <button class="active" data-rank="martial" onclick="setRanking(this)">演武旬榜</button>
+    <button data-rank="merit" onclick="setRanking(this)">功勳錄</button>
+    <button data-rank="exam" onclick="setRanking(this)">季考榜</button>
+    <button data-rank="craft" onclick="setRanking(this)">技藝評比</button>
+  </div>
+
+  <div class="rank-summary">
+    <div class="card"><span class="sub">範圍</span><strong id="rankingScope" style="font-size:15px"></strong><span id="rankingSource" class="small"></span></div>
+    <div class="card"><span class="sub">你的紀錄</span><strong id="rankingSelf" style="font-size:15px"></strong><span id="rankingSelfNote" class="small"></span></div>
+  </div>
+
+  <div id="rankingStatus" class="admin-only notice" style="margin-bottom:11px"></div>
+  <div id="rankingList" class="rank-table"></div>
+</div>
+
+</section>
+
+<section id="world" class="screen">
+<div class="tabs"><button class="active" onclick="tab(this,'places','world');renderPlaces()">地點</button><button onclick="tab(this,'people','world');renderPeople()">人物</button></div>
+
+<div id="world-places">
+  <div class="library-toolbar"><input id="placeSearch" placeholder="搜尋地點" oninput="renderPlaces()"></div>
+  <div class="filter-strip" id="placeFilters">
+    <button class="active" data-filter="全部" onclick="setPlaceFilter(this)">全部</button>
+    <button data-filter="宗門" onclick="setPlaceFilter(this)">宗門</button>
+    <button data-filter="凡間" onclick="setPlaceFilter(this)">凡間</button>
+    <button data-filter="傳聞" onclick="setPlaceFilter(this)">傳聞</button>
+  </div>
+  <div id="placeLibrary" class="library-list"></div>
+</div>
+
+<div id="world-people" style="display:none">
+  <div class="library-toolbar"><input id="peopleSearch" placeholder="搜尋人物" oninput="renderPeople()"></div>
+  <div class="filter-strip" id="peopleFilters">
+    <button class="active" data-filter="全部" onclick="setPeopleFilter(this)">全部</button>
+    <button data-filter="宗門" onclick="setPeopleFilter(this)">宗門</button>
+    <button data-filter="凡間" onclick="setPeopleFilter(this)">凡間</button>
+    <button data-filter="其他" onclick="setPeopleFilter(this)">其他</button>
+  </div>
+  <div id="peopleLibrary" class="library-list"></div>
+</div>
+</section>
+
+<section id="mail" class="screen">
+<div class="title"><h2>書信往來</h2><button class="link" onclick="newLetter()">新書信</button></div>
+<div class="list">
+  <div class="row thread-row" onclick="openThread('宋昭昭')">
+    <div class="thread-avatar">宋</div>
+    <div class="thread-main"><strong>宋昭昭</strong><span class="small thread-preview">明日午時我會在膳堂東側等你。</span></div>
+    <span class="tag warn">未讀</span>
+  </div>
+  <div class="row thread-row" onclick="openThread('爹娘')">
+    <div class="thread-avatar">家</div>
+    <div class="thread-main"><strong>爹娘</strong><span class="small thread-preview">上一封家書正在送往凡間。</span></div>
+    <span class="tag gray">運送中</span>
+  </div>
+  <div class="row thread-row" onclick="openThread('林羽')">
+    <div class="thread-avatar">林</div>
+    <div class="thread-main"><strong>林羽</strong><span class="small thread-preview">尚無書信往來</span></div>
+    <span class="tag gray">—</span>
+  </div>
+</div>
+<div class="title"><h2>通訊錄</h2></div>
+<div class="chips"><span class="chip">爹娘</span><span class="chip">唐清晏</span><span class="chip">宋昭昭</span><span class="chip">林羽</span><span class="chip">宗門事務堂</span></div>
+</section>
+</main>
+
+<div id="roundbar" class="roundbar" onclick="openSubmit()"><div><strong id="roundTitle">結束本輪</strong><small id="roundSub">0 項操作</small></div><button class="btn small" style="background:#fff;color:#263a31">繼續</button></div>
+<nav class="nav"><button class="active" data-id="home" onclick="show('home',this)"><b>⌂</b>首頁</button><button data-id="growth" onclick="show('growth',this)"><b>✦</b>養成</button><button data-id="sect" onclick="show('sect',this)"><b>閣</b>宗門</button><button data-id="world" onclick="show('world',this)"><b>冊</b>資料</button><button data-id="mail" onclick="show('mail',this)"><b>信</b>信箱</button></nav>
+</div>
+
+<div id="submitModal" class="modal" onclick="closeOuter(event,'submitModal')">
+  <div class="sheet">
+    <h2 id="submitTitle">結束本輪</h2>
+
+    <div class="preview-block">
+      <h3>你的操作</h3>
+      <div id="actionList" class="list"></div>
+    </div>
+
+    <div class="preview-block">
+      <h3>從本輪劇情辨識</h3>
+      <div id="detectedChanges">
+        <label class="preview-item"><input type="checkbox" checked><div class="preview-copy"><strong>時間推進至三月十九日辰時</strong><span class="admin-only small">「翌日清晨」</span></div><span class="admin-only tag">明確</span></label>
+        <label class="preview-item"><input type="checkbox" checked><div class="preview-copy"><strong>到訪丹鼎峰藥房</strong><span class="small">加入地點到訪紀錄</span></div><span class="admin-only tag">明確</span></label>
+        <label class="preview-item"><input type="checkbox" checked><div class="preview-copy"><strong>劍術 +2</strong><span class="small">本輪有一次完整實戰練習</span></div><span class="admin-only tag">明確</span></label>
+        <label class="preview-item"><input type="checkbox"><div class="preview-copy"><strong>月白披風可能加入衣櫥</strong><span class="small">無法判斷是贈送還是暫借，未勾選時送往待確認</span></div><span class="admin-only tag warn">不確定</span></label>
+      </div>
+    </div>
+
+    <div class="preview-block">
+      <h3>下一輪交接</h3>
+      <div id="handoffPreview">
+        <div class="preview-item"><input type="checkbox" checked><div class="preview-copy"><strong contenteditable="true">目前位於丹鼎峰藥房。</strong></div><select><option>直到改變</option><option>下一輪</option><option>不提供</option></select></div>
+        <div class="preview-item"><input type="checkbox" checked><div class="preview-copy"><strong contenteditable="true">本輪完成一次劍術實戰練習。</strong></div><select><option>下一輪</option><option>直到改變</option><option>不提供</option></select></div>
+        <div class="preview-item"><input type="checkbox" checked><div class="preview-copy"><strong contenteditable="true">故事時間已到三月十九日辰時。</strong></div><select><option>直到改變</option><option>下一輪</option><option>不提供</option></select></div>
+      </div>
+    </div>
+
+    <div id="submitNote" class="sub"></div>
+    <div class="actions" style="margin-top:13px">
+      <button class="btn secondary" onclick="clearAll()">清空操作</button>
+      <button id="submitButton" class="btn" style="flex:1" onclick="submitRound()">完成本輪</button>
+    </div>
+  </div>
+</div>
+
+<div id="pendingModal" class="modal" onclick="closeOuter(event,'pendingModal')"><div class="sheet"><h2>待你確認</h2><button class="btn ghost" style="width:100%;margin-top:12px" onclick="openCorrection()">用一句話修正資料</button><div id="pendingList" class="list" style="margin-top:13px">
+<div class="confirm-card" data-pending><strong>故事時間可能推進</strong><span class="small">正文寫道「翌日清晨」，建議更新為三月十九日辰時。</span><div class="actions" style="margin-top:10px"><button class="btn small" onclick="resolvePending(this,'已同意時間更新')">同意</button><button class="btn small secondary" onclick="editPending(this,'時間')">修改</button><button class="btn small danger" onclick="resolvePending(this,'已拒絕時間更新')">拒絕</button></div></div>
+<div class="confirm-card" data-pending><strong>疑似獲得跌打膏</strong><span class="small">「唐清晏把藥瓶放到你手邊」是否算收入背包？</span><div class="actions" style="margin-top:10px"><button class="btn small" onclick="resolvePending(this,'已加入背包')">同意</button><button class="btn small danger" onclick="resolvePending(this,'已忽略物品變化')">拒絕</button></div></div>
+<div class="confirm-card" data-pending><strong>疑似獲得衣物：月白披風</strong><span class="small">正文只寫「她把披風披到你肩上」，無法確定是贈送還是暫借。是否加入衣櫥？</span><div class="actions" style="margin-top:10px"><button class="btn small" onclick="resolvePending(this,'已加入衣櫥')">同意</button><button class="btn small danger" onclick="resolvePending(this,'未加入衣櫥')">拒絕</button></div></div>
+<div class="confirm-card" data-pending><strong>候選人物：藥房老者</strong><span class="small">目前只出現一次，是否加入正式人物清單？</span><div class="actions" style="margin-top:10px"><button class="btn small" onclick="resolvePending(this,'已加入人物清單')">同意</button><button class="btn small danger" onclick="resolvePending(this,'不加入正式清單')">拒絕</button></div></div>
+</div><button class="btn secondary" style="width:100%;margin-top:13px" onclick="document.getElementById('pendingModal').classList.remove('open')">關閉</button></div></div>
+
+
+<div id="correctionModal" class="modal" onclick="closeOuter(event,'correctionModal')">
+  <div class="sheet">
+    <h2>修正資料</h2>
+    <div class="field"><label>直接說明哪裡不對</label><textarea id="correctionInput" placeholder="例如：我沒有收下那件披風；靈石應該是十九枚。"></textarea></div>
+    <button class="btn" style="width:100%" onclick="parseCorrection()">解析修正</button>
+    <div id="correctionResult" class="correction-result">
+      <strong id="correctionTitle">修改預覽</strong>
+      <div id="correctionBody" class="small" style="margin-top:6px"></div>
+      <div class="actions" style="margin-top:11px"><button class="btn secondary" onclick="document.getElementById('correctionResult').classList.remove('show')">重寫</button><button class="btn" onclick="applyCorrection()">確認修改</button></div>
+    </div>
+  </div>
+</div>
+
+<div id="examModal" class="modal" onclick="closeOuter(event,'examModal')"><div class="sheet"><h2>外門季度考核</h2><div class="kv"><b>時間</b><span>四月初一，辰時開始</span><b>地點</b><span>傳功峰</span><b>報名截止</b><span>三月二十七日</span><b>結果</b><span>合格／優良／未通過；影響晉升與獎勵</span></div>
+<div class="exam-section"><strong>考核內容</strong><ul class="checklist"><li>基礎理論：宗門規矩、靈氣與經脈常識</li><li>靈力控制：按指定要求完成一次穩定施術</li><li>主修技能：從已學內容中抽取項目實演</li><li>平時紀錄：作業、宗門任務與違規紀錄</li></ul></div>
+<div class="exam-section"><strong>目前準備情況</strong><ul class="checklist"><li>✓ 本週作業已完成 1 項</li><li>△ 清風劍訣連貫練習尚差 1 次</li><li>△ 靈力控制數值 27；公告建議至少 30</li><li>✕ 宗門任務目前 2 / 3</li></ul></div>
+<button class="btn secondary" style="width:100%;margin-top:13px" onclick="document.getElementById('examModal').classList.remove('open')">關閉</button></div></div>
+
+<div id="threadModal" class="modal thread-modal">
+  <div class="thread-shell">
+    <div class="chat-head"><button onclick="closeThread()">‹</button><div><div id="threadTitle" class="chat-title">書信</div><div id="threadStatus" class="sub"></div></div></div>
+    <div id="threadBody" class="thread-body"></div>
+    <div class="thread-compose">
+      <textarea id="threadDraft" placeholder="寫下回信……"></textarea>
+      <div class="field" style="margin-top:8px"><select id="threadMethod"><option data-price="2">凡間驛傳 · 2 靈石</option><option data-price="3">傳音紙鶴 · 3 靈石</option><option data-price="8">加急飛劍 · 8 靈石</option></select></div>
+      <div class="actions"><button class="btn secondary" onclick="polishThread()">潤色</button><button class="btn" onclick="addThreadMail()">加入本輪寄信</button></div>
+    </div>
+  </div>
+</div>
+
+
+
+
+<div id="activityModal" class="modal" onclick="closeOuter(event,'activityModal')">
+  <div class="sheet">
+    <div style="display:flex;align-items:flex-start;gap:10px">
+      <div style="flex:1"><div id="activityType" class="eyebrow">期間活動</div><h2 id="activityTitle" style="margin-top:4px"></h2></div>
+      <button class="btn small secondary" onclick="document.getElementById('activityModal').classList.remove('open')">關閉</button>
+    </div>
+    <div id="activityDescription" class="sub"></div>
+    <dl id="activityDetails" class="activity-detail-grid"></dl>
+    <div id="activityNotice" class="notice" style="margin-top:14px"></div>
+    <div id="activityActions" class="actions" style="margin-top:14px"></div>
+  </div>
+</div>
+
+<div id="settingsModal" class="modal" onclick="closeOuter(event,'settingsModal')">
+  <div class="sheet">
+    <div style="display:flex;align-items:flex-start;gap:10px">
+      <div style="flex:1"><div class="eyebrow">插件連線</div><h2 style="margin-top:4px">設定</h2></div>
+      <button class="btn small secondary" onclick="document.getElementById('settingsModal').classList.remove('open')">關閉</button>
+    </div>
+
+    <div class="setting-section">
+      <h3>OpenAI-compatible API</h3>
+      <div class="field"><label>API 地址</label><input id="apiBase" value="https://example-proxy.com/v1" placeholder="https://…/v1"></div>
+      <div class="field"><label>API Key</label><div class="secret-wrap"><input id="apiKey" type="password" value="sk-example-key" placeholder="sk-…"><button class="secret-toggle" onclick="toggleApiKey()">顯示</button></div></div>
+      <div class="connection-state"><span id="connectionDot" class="connection-dot"></span><span id="connectionText">尚未測試</span></div>
+    </div>
+
+    <div class="setting-section">
+      <h3>模型分工</h3>
+      <div class="field"><label>劇情分析模型</label><input id="extractModel" value="gpt-4.1-mini" placeholder="模型名稱"></div>
+      <div class="field"><label>生成／問答模型</label><input id="creativeModel" value="gpt-4.1" placeholder="模型名稱"></div>
+      <div class="field"><label>校驗模型</label><input id="verifyModel" value="gpt-4.1-mini" placeholder="可與分析模型相同"></div>
+    </div>
+
+    <div class="setting-section">
+      <h3>介面模式</h3>
+      <div class="toggle-row"><div><strong style="font-size:13px">沉浸模式</strong><div class="sub">隱藏管理資訊</div></div><label class="switch"><input id="immersiveMode" type="checkbox" checked><span class="slider"></span></label></div>
+    </div>
+
+    <div class="setting-section">
+      <h3>顯示模組</h3>
+      <div class="module-grid">
+        <label class="module-option">養成<input id="moduleGrowth" type="checkbox" checked></label>
+        <label class="module-option">宗門<input id="moduleSect" type="checkbox" checked></label>
+        <label class="module-option">資料庫<input id="moduleWorld" type="checkbox" checked></label>
+        <label class="module-option">書信<input id="moduleMail" type="checkbox" checked></label>
+      </div>
+    </div>
+
+    <div class="setting-section">
+      <h3>請求設定</h3>
+      <div class="setting-row">
+        <div class="field"><label>Temperature</label><input id="temperature" type="number" min="0" max="2" step="0.1" value="0.3"></div>
+        <div class="field"><label>最大輸出 Tokens</label><input id="maxTokens" type="number" min="256" step="256" value="2048"></div>
+      </div>
+      <div class="toggle-row"><div><strong style="font-size:13px">每輪自動分析</strong></div><label class="switch"><input id="autoAnalyze" type="checkbox" checked><span class="slider"></span></label></div>
+      <div class="toggle-row"><div><strong style="font-size:13px">儲存在此裝置</strong></div><label class="switch"><input id="saveApiKey" type="checkbox" checked><span class="slider"></span></label></div>
+    </div>
+
+    <div class="actions" style="margin-top:15px">
+      <button class="btn secondary" onclick="testConnection()">測試連線</button>
+      <button class="btn" style="flex:1" onclick="saveSettings()">保存設定</button>
+    </div>
+  </div>
+</div>
+
+<div id="recordModal" class="modal" onclick="closeOuter(event,'recordModal')">
+  <div class="sheet">
+    <div style="display:flex;align-items:flex-start;gap:10px">
+      <div style="flex:1"><div id="recordType" class="eyebrow"></div><h2 id="recordTitle" style="margin-top:4px"></h2></div>
+      <button class="btn small secondary" onclick="document.getElementById('recordModal').classList.remove('open')">關閉</button>
+    </div>
+    <div id="recordSummary" class="sub"></div><div class="admin-only sub" style="margin-top:8px">來源與更新時間</div>
+    <dl id="recordDetails" class="detail-grid"></dl>
+    <div id="recordActions" class="actions" style="margin-top:16px"></div>
+  </div>
+</div>
+
+<div id="assistantModal" class="modal assistant-modal">
+  <div class="assistant-shell">
+    <div class="chat-head"><button onclick="closeAssistant()">‹</button><div class="chat-title">劇情問答</div><div class="assistant-actions"><button onclick="clearAssistant()">清空</button></div></div>
+    <div id="assistantLog" class="chat-log">
+      <div class="bubble ai">想查甚麼？</div>
+      <div class="bubble user">外門季度考核有哪些項目？</div>
+      <div class="bubble ai">公告列出四項：基礎理論、靈力控制、主修技能實演，以及平時紀錄。</div>
+    </div>
+    <div class="chat-compose">
+      <textarea id="assistantQuestion" placeholder="繼續追問……"></textarea>
+      <button class="btn" onclick="sendAssistant()">送出</button>
+    </div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+<script>
+
+const acts=[];let stones=18;let activeThread='宋昭昭';
+let placeFilter='全部', peopleFilter='全部';
+
+let activityFilter='全部';
+
+const activityRecords=[
+  {
+    id:'herbtrial',
+    title:'春季靈草辨識小試',
+    status:'可報名',
+    statusClass:'status-open',
+    organizer:'丹鼎峰',
+    period:'三月二十一日午時',
+    deadline:'三月十九日酉時',
+    place:'丹鼎峰・百草堂',
+    eligibility:'外門弟子皆可；需完成基礎藥草課',
+    registration:'在事務堂活動簿登記姓名，不收費',
+    participation:'到場後依次辨識四十至五十種靈草，限時完成',
+    reward:'前五名獲藥房兌換額度；成績列入本次技藝評比榜',
+    leaderboard:'春季靈草辨識小試榜',
+    description:'丹鼎峰每季舉行的小型公開評比，用於檢查外門弟子的藥草辨識基礎。',
+    selfStatus:'尚未報名',
+    canRegister:true
+  },
+  {
+    id:'martialten',
+    title:'演武台三月下旬旬榜',
+    status:'進行中',
+    statusClass:'status-running',
+    organizer:'外門演武台',
+    period:'三月十六日至三月二十日',
+    deadline:'每場比試開始前一刻鐘',
+    place:'白玉廣場西側演武台',
+    eligibility:'練氣一至三層外門弟子；同境界區間配對',
+    registration:'每場比試單獨登記，可在演武台執事處報名',
+    participation:'報名後由執事安排對手；只計公開、正式裁定的比試',
+    reward:'勝場積分計入旬榜；前三名可領少量宗門貢獻',
+    leaderboard:'演武台・練氣初境旬榜',
+    description:'短期公開演武活動，不要求整旬連續參加，也不代表所有弟子的真實實力。',
+    selfStatus:'本旬尚未參賽',
+    canRegister:true
+  },
+  {
+    id:'quarterexam',
+    title:'外門季度考核',
+    status:'即將開始',
+    statusClass:'status-upcoming',
+    organizer:'傳功峰',
+    period:'四月初一辰時',
+    deadline:'三月二十七日酉時',
+    place:'傳功峰・外門考場',
+    eligibility:'完成本季最低作業與任務要求；無未結清的重大處分',
+    registration:'符合條件後，在各院教習處核驗並登記',
+    participation:'依公告次序完成理論、靈力控制、主修實演與平時紀錄核驗',
+    reward:'考核結果影響下一季度課程、資源與部分進階資格',
+    leaderboard:'外門季度考核榜（考後開榜）',
+    description:'外門弟子的正式季度評定。考核尚未舉行前，不會預測排名。',
+    selfStatus:'尚未達到報名條件',
+    canRegister:false
+  },
+  {
+    id:'springrite',
+    title:'春祭禮儀協助',
+    status:'已結束',
+    statusClass:'status-ended',
+    organizer:'禮儀堂',
+    period:'三月初八',
+    deadline:'已截止',
+    place:'天權殿前庭',
+    eligibility:'自願報名；需能提前一日到場排演',
+    registration:'已結束',
+    participation:'協助引導賓客、整理供桌與維持儀式秩序',
+    reward:'完成者記一次公共差事，不設排名',
+    leaderboard:'無',
+    description:'宗門春祭期間的公共差事，活動已結束。',
+    selfStatus:'未參加',
+    canRegister:false
+  }
+];
+
+let pendingCorrection='';
+
+const placeRecords=[
+  {id:'tingsong',name:'聽松院',mark:'院',area:'宗門',status:'目前所在',group:'天衡宗・院落',summary:'唐清晏居所附近的院落，常用於休息與日常起居。',first:'入宗當日',last:'三月十八日',visit:'已到訪',notes:'與白玉廣場、主峰道路相通。'},
+  {id:'tianquan',name:'天權殿',mark:'殿',area:'宗門',status:'已知',group:'天衡宗・主峰',summary:'掌門與長老議事之處，重大典禮也可能在此舉行。',first:'入宗介紹',last:'三月初',visit:'尚未到訪',notes:'普通外門弟子不能隨意進入內殿。'},
+  {id:'square',name:'白玉廣場',mark:'場',area:'宗門',status:'已到訪',group:'天衡宗・主峰',summary:'弟子集合、晨課散場與大型活動的主要場所。',first:'入宗當日',last:'三月十七日',visit:'已到訪',notes:'每日晨課後人流最多。'},
+  {id:'affairs',name:'事務堂',mark:'務',area:'宗門',status:'已到訪',group:'天衡宗・主峰',summary:'領取任務、物資調度、日常採買與部分對外交易。',first:'入宗第二日',last:'三月十八日',visit:'已到訪',notes:'每日商店與任務紀錄主要來源。'},
+  {id:'swordpeak',name:'凌劍峰',mark:'劍',area:'宗門',status:'已知',group:'天衡宗・山峰',summary:'宗門劍修主要修習之處，設有演武場與劍堂。',first:'同門談話',last:'三月十六日',visit:'尚未到訪',notes:'與外門季度考核無直接關係。'},
+  {id:'alchemypeak',name:'丹鼎峰',mark:'丹',area:'宗門',status:'已知',group:'天衡宗・山峰',summary:'煉丹、藥材辨識與宗門藥房所在。',first:'課業公告',last:'三月十八日',visit:'尚未到訪',notes:'部分藥房區域對外門弟子開放。'},
+  {id:'luoxing',name:'落星鎮',mark:'鎮',area:'凡間',status:'已知',group:'凡間・城鎮',summary:'青石橋與甜水鋪所在的凡間城鎮。',first:'家鄉回憶',last:'入宗前',visit:'曾到訪',notes:'可使用凡間驛傳寄送家書。'},
+  {id:'wenfeng',name:'問風鎮',mark:'危',area:'凡間',status:'危險紀錄',group:'凡間・城鎮',summary:'曾發生魔修血祭事件，部分區域受損。',first:'宗門任務紀錄',last:'三月初',visit:'未到訪',notes:'目前狀況不明。'},
+  {id:'spiritvein',name:'後山靈脈異常區',mark:'?',area:'傳聞',status:'未確認',group:'宗門後山・傳聞',summary:'只在線索中出現。',first:'同門傳聞',last:'三月十八日',visit:'未確認',notes:'尚未確認。'}
+];
+
+const peopleRecords=[
+  {id:'tang',name:'唐清晏',mark:'唐',area:'宗門',status:'已遇見',identity:'天衡宗大師兄',relation:'同門；目前互動較多',first:'入宗當日',last:'三月十八日・聽松院',summary:'負責部分新弟子照看與宗門事務。',contact:'可用宗門書信'},
+  {id:'song',name:'宋昭昭',mark:'宋',area:'宗門',status:'已遇見',identity:'天衡宗同門弟子',relation:'同門；已有書信往來',first:'入宗初期',last:'三月十八日・來信',summary:'與你約定次日午時在膳堂見面。',contact:'可用宗門書信'},
+  {id:'lin',name:'林羽',mark:'林',area:'宗門',status:'已遇見',identity:'凌劍峰內門弟子',relation:'同門；接觸不多',first:'演武相關劇情',last:'三月十六日',summary:'目前資料不多。',contact:'可用宗門書信'},
+  {id:'parents',name:'爹娘',mark:'家',area:'凡間',status:'通訊錄',identity:'何桃酥的父母',relation:'家人',first:'角色背景',last:'家書寄出於三月十五日',summary:'可透過凡間驛傳聯絡。',contact:'凡間驛傳'},
+  {id:'elder',name:'掌門',mark:'掌',area:'其他',status:'聽說過',identity:'天衡宗掌門',relation:'尚未正式交談',first:'宗門介紹',last:'三月初',summary:'目前只知道其宗門身分。',contact:'無直接聯絡方式'}
+];
+
+function show(id){
+  document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.id===id));
+  scrollTo({top:0,behavior:'smooth'});
+}
+function tab(btn,name,group){
+  btn.parentElement.querySelectorAll('button').forEach(x=>x.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('[id^="'+group+'-"]').forEach(x=>x.style.display='none');
+  document.getElementById(group+'-'+name).style.display='block';
+}
+function add(title,detail,type='其他',price=0){
+  acts.push({title,detail,type,price});
+  updateRound();
+  toast('已加入本輪');
+}
+function buy(name,price){
+  const spent=acts.reduce((s,a)=>s+a.price,0);
+  if(stones-spent<price){toast('靈石不足');return}
+  add('購買 '+name,'靈石 -'+price,'購買',price);
+}
+function updateRound(){
+  const s=acts.reduce((n,a)=>n+a.price,0);
+  document.getElementById('roundTitle').textContent=acts.length?'本輪 '+acts.length+' 項':'結束本輪';
+  document.getElementById('roundSub').textContent=acts.length?(s?'支出 '+s+' 靈石':'待提交'):'0 項操作';
+}
+function openSubmit(){
+  const l=document.getElementById('actionList');l.innerHTML='';
+  if(!acts.length){
+    l.innerHTML='<div class="sub" style="padding:8px 2px">沒有額外操作。</div>';
+  }else{
+    acts.forEach((a,i)=>{
+      const d=document.createElement('div');d.className='row';
+      d.innerHTML='<div><strong>'+(i+1)+'. '+a.title+'</strong><span class="small">'+a.detail+'</span></div><button class="btn small secondary" onclick="removeAct('+i+')">刪除</button>';
+      l.appendChild(d);
+    });
+  }
+  document.getElementById('submitTitle').textContent=acts.length?'提交本輪':'結束本輪';
+  document.getElementById('submitButton').textContent='完成本輪';
+  document.getElementById('submitModal').classList.add('open');
+}
+function removeAct(i){acts.splice(i,1);updateRound();openSubmit()}
+function clearAll(){acts.length=0;updateRound();openSubmit();toast('已清空')}
+function submitRound(){
+  stones-=acts.reduce((n,a)=>n+a.price,0);
+  const accepted=[...document.querySelectorAll('#detectedChanges input:checked')].length;
+  const handed=[...document.querySelectorAll('#handoffPreview .preview-item')].filter(x=>x.querySelector('input').checked&&x.querySelector('select').value!=='不提供').length;
+  document.getElementById('submitNote').textContent='已接受 '+accepted+' 項劇情變化，準備 '+handed+' 項交接內容。';
+  setTimeout(()=>{
+    acts.length=0;updateRound();
+    document.getElementById('submitModal').classList.remove('open');
+    toast('本輪已完成');
+  },700);
+}
+
+function openCorrection(){
+  document.getElementById('pendingModal').classList.remove('open');
+  document.getElementById('correctionInput').value='';
+  document.getElementById('correctionResult').classList.remove('show');
+  document.getElementById('correctionModal').classList.add('open');
+}
+function parseCorrection(){
+  const value=document.getElementById('correctionInput').value.trim();
+  if(!value){toast('請先寫下修正內容');return}
+  pendingCorrection=value;
+  let result='';
+  if(value.includes('沒有收下')||value.includes('披風')){
+    result='移除「月白披風」的取得紀錄，不加入衣櫥。';
+  }else if(value.includes('靈石')){
+    const m=value.match(/[0-9一二三四五六七八九十百]+/);
+    result='把靈石帳本改為 '+(m?m[0]:'你指定的數量')+'，並保留一條人工修正紀錄。';
+  }else if(value.includes('不是')&&value.includes('好友')){
+    result='把相關人物關係改為「普通同門」，不影響已發生事件。';
+  }else{
+    result='將這段說明轉成一項人工修正，套用前保留預覽與歷史紀錄。';
+  }
+  document.getElementById('correctionBody').textContent=result;
+  document.getElementById('correctionResult').classList.add('show');
+}
+function applyCorrection(){
+  if(!pendingCorrection)return;
+  document.getElementById('correctionModal').classList.remove('open');
+  pendingCorrection='';
+  toast('修正已套用');
+}
+
+function openPending(){document.getElementById('pendingModal').classList.add('open')}
+function updatePendingCount(){
+  const n=document.querySelectorAll('[data-pending]').length;
+  document.getElementById('pendingTop').textContent=n?'● 待確認 '+n:'待確認 0';
+}
+function resolvePending(btn,msg){
+  const card=btn.closest('[data-pending]');card.remove();updatePendingCount();toast(msg);
+}
+function editPending(btn,label){
+  const v=prompt('修改'+label+'：',label==='時間'?'三月十九日辰時':'');
+  if(v){resolvePending(btn,'已修改')}
+}
+function openExam(){document.getElementById('examModal').classList.add('open')}
+function openSchoolTab(){const b=document.getElementById('schoolTab');tab(b,'school','sect')}
+function updateOutfitPreview(){
+  const value=id=>document.getElementById(id)?.value||'';
+  const parts=[value('slotOuter'),value('slotHead'),value('slotShoes'),value('slotAccessory')].filter(x=>x&&!x.startsWith('無'));
+  document.getElementById('outfitPreview').textContent=parts.join('＋');
+}
+function addCurrentOutfit(){
+  const t=document.getElementById('outfitPreview').textContent;
+  add('換上 '+t,'提交後生效','換裝');
+}
+function loadOutfit(type){
+  if(type==='daily'){
+    document.getElementById('slotHead').value='青玉髮簪';
+    document.getElementById('slotInner').value='素白內衫';
+    document.getElementById('slotOuter').value='白色弟子常服';
+    document.getElementById('slotShoes').value='軟底短靴';
+    document.getElementById('slotAccessory').value='無配飾';
+  }else{
+    document.getElementById('slotHead').value='無頭飾';
+    document.getElementById('slotInner').value='淡青交領內衫';
+    document.getElementById('slotOuter').value='青色練功服';
+    document.getElementById('slotShoes').value='練功布鞋';
+    document.getElementById('slotAccessory').value='宗門腰牌';
+  }
+  updateOutfitPreview();toast('已載入');
+}
+
+function setPlaceFilter(btn){
+  placeFilter=btn.dataset.filter;
+  document.querySelectorAll('#placeFilters button').forEach(x=>x.classList.toggle('active',x===btn));
+  renderPlaces();
+}
+function setPeopleFilter(btn){
+  peopleFilter=btn.dataset.filter;
+  document.querySelectorAll('#peopleFilters button').forEach(x=>x.classList.toggle('active',x===btn));
+  renderPeople();
+}
+function renderPlaces(){
+  const host=document.getElementById('placeLibrary');if(!host)return;
+  const q=(document.getElementById('placeSearch')?.value||'').trim().toLowerCase();
+  const rows=placeRecords.filter(x=>(placeFilter==='全部'||x.area===placeFilter)&&(!q||(x.name+x.group+x.summary+x.status).toLowerCase().includes(q)));
+  host.innerHTML=rows.length?rows.map(x=>`
+    <div class="library-item" onclick="openPlaceRecord('${x.id}')">
+      <div class="library-mark">${x.mark}</div>
+      <div class="library-copy"><strong>${x.name}</strong><span class="small">${x.group} · ${x.summary}</span></div>
+      <div class="library-side"><span class="tag ${x.status.includes('未')||x.status.includes('危險')?'warn':''}">${x.status}</span></div>
+    </div>`).join(''):'<div class="empty-state">沒有符合的地點</div>';
+}
+function renderPeople(){
+  const host=document.getElementById('peopleLibrary');if(!host)return;
+  const q=(document.getElementById('peopleSearch')?.value||'').trim().toLowerCase();
+  const rows=peopleRecords.filter(x=>(peopleFilter==='全部'||x.area===peopleFilter)&&(!q||(x.name+x.identity+x.relation+x.summary).toLowerCase().includes(q)));
+  host.innerHTML=rows.length?rows.map(x=>`
+    <div class="library-item" onclick="openPeopleRecord('${x.id}')">
+      <div class="library-mark">${x.mark}</div>
+      <div class="library-copy"><strong>${x.name}</strong><span class="small">${x.identity} · ${x.relation}</span></div>
+      <div class="library-side"><span class="tag ${x.status==='聽說過'?'gray':''}">${x.status}</span></div>
+    </div>`).join(''):'<div class="empty-state">沒有符合的人物</div>';
+}
+function showRecord(type,title,summary,rows,actions=''){
+  document.getElementById('recordType').textContent=type;
+  document.getElementById('recordTitle').textContent=title;
+  document.getElementById('recordSummary').textContent=summary;
+  document.getElementById('recordDetails').innerHTML=rows.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('');
+  document.getElementById('recordActions').innerHTML=actions;
+  document.getElementById('recordModal').classList.add('open');
+}
+function openPlaceRecord(id){
+  const x=placeRecords.find(v=>v.id===id);if(!x)return;
+  showRecord('地點',x.name,x.summary,[
+    ['所屬',x.group],['狀態',x.status],['到訪',x.visit],['首次得知',x.first],['最近更新',x.last],['備註',x.notes]
+  ]);
+}
+function openPeopleRecord(id){
+  const x=peopleRecords.find(v=>v.id===id);if(!x)return;
+  const canWrite=x.contact!=='無直接聯絡方式';
+  showRecord('人物',x.name,x.summary,[
+    ['身分',x.identity],['關係',x.relation],['狀態',x.status],['首次得知',x.first],['最近紀錄',x.last],['聯絡',x.contact]
+  ],canWrite?`<button class="btn" onclick="document.getElementById('recordModal').classList.remove('open');mailTo('${x.name}')">寫信</button>`:'');
+}
+
+
+
+
+function setActivityFilter(btn){
+  activityFilter=btn.dataset.filter;
+  document.querySelectorAll('#activityFilters button').forEach(x=>x.classList.toggle('active',x===btn));
+  renderActivities();
+}
+function renderActivities(){
+  const host=document.getElementById('activityList');if(!host)return;
+  const rows=activityRecords.filter(x=>activityFilter==='全部'||x.status===activityFilter);
+  host.innerHTML=rows.length?rows.map(x=>`
+    <div class="activity-card">
+      <div class="activity-top">
+        <div><h3>${x.title}</h3><div class="small">${x.description}</div></div>
+        <span class="tag ${x.statusClass}">${x.status}</span>
+      </div>
+      <div class="activity-meta">
+        <span class="chip">${x.organizer}</span>
+        <span class="chip">${x.period}</span>
+        <span class="chip">${x.selfStatus}</span>
+      </div>
+      <div class="actions" style="margin-top:11px">
+        <button class="btn small ghost" onclick="openActivity('${x.id}')">查看詳情</button>
+        ${x.canRegister?`<button class="btn small" onclick="registerActivity('${x.id}')">報名</button>`:''}
+      </div>
+    </div>`).join(''):'<div class="empty-state">沒有符合的活動</div>';
+}
+function openActivity(id){
+  const x=activityRecords.find(v=>v.id===id);if(!x)return;
+  document.getElementById('activityTitle').textContent=x.title;
+  document.getElementById('activityDescription').textContent=x.description;
+  document.getElementById('activityDetails').innerHTML=[
+    ['主辦',x.organizer],['時間',x.period],['報名截止',x.deadline],['地點',x.place],
+    ['參加條件',x.eligibility],['報名方式',x.registration],['參與方式',x.participation],
+    ['獎勵／影響',x.reward],['關聯榜單',x.leaderboard],['你的狀態',x.selfStatus]
+  ].map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('');
+  document.getElementById('activityNotice').textContent=x.canRegister
+    ?'報名只完成登記，活動仍需在主線參與。'
+    :(x.status==='即將開始'?'尚未滿足報名條件。':'目前不能報名。');
+  document.getElementById('activityActions').innerHTML=x.canRegister
+    ?`<button class="btn" onclick="registerActivity('${x.id}')">加入本輪報名</button>`
+    :'';
+  document.getElementById('activityModal').classList.add('open');
+}
+function registerActivity(id){
+  const x=activityRecords.find(v=>v.id===id);if(!x||!x.canRegister)return;
+  if(x.selfStatus==='已加入本輪報名'||x.selfStatus==='已報名'){
+    toast('已經登記');return;
+  }
+  x.selfStatus='已加入本輪報名';
+  add('報名：'+x.title,'依活動規則完成正式登記；不代表已參加活動','活動報名',0);
+  renderActivities();
+  if(document.getElementById('activityModal').classList.contains('open'))openActivity(id);
+}
+
+const rankingBoards={
+  martial:{
+    title:'演武台・練氣初境旬榜',
+    updated:'三月二十日收榜',
+    scope:'外門練氣一至三層，且本旬已登記演武者',
+    source:'演武台執事依公開對戰結果登錄',
+    self:'未入榜',
+    selfNote:'本旬尚未參加公開演武',
+    status:'榜單仍在變動。',
+    rows:[
+      {rank:1,name:'顧長風',detail:'六勝零負',score:'積分 18'},
+      {rank:2,name:'陸青衡',detail:'五勝一負',score:'積分 15'},
+      {rank:3,name:'許知微',detail:'四勝零負',score:'積分 12'},
+      {rank:4,name:'聞人澈',detail:'四勝一負',score:'積分 11'},
+      {rank:5,name:'程野',detail:'三勝一負',score:'積分 9'},
+      {rank:'—',name:'你',detail:'尚無本旬公開對戰紀錄',score:'未參賽',me:true}
+    ]
+  },
+  merit:{
+    title:'外門・三月功勳錄',
+    updated:'四月初一換榜',
+    scope:'三月內已驗收的宗門任務與公共差事',
+    source:'事務堂任務驗收紀錄',
+    self:'未列前十',
+    selfNote:'目前 26 貢獻；已完成兩件登記任務',
+    status:'宗門只公示前十名。',
+    rows:[
+      {rank:1,name:'周明夷',detail:'十九件任務，其中三件乙等',score:'186 貢獻'},
+      {rank:2,name:'蘇晚照',detail:'十七件任務，其中兩件乙等',score:'173 貢獻'},
+      {rank:3,name:'顧長風',detail:'十六件任務，其中四件護送',score:'169 貢獻'},
+      {rank:4,name:'韓照',detail:'十四件任務',score:'148 貢獻'},
+      {rank:5,name:'沈知藥',detail:'藥房與靈田差事',score:'136 貢獻'},
+      {rank:'榜外',name:'你',detail:'兩件已驗收任務',score:'26 貢獻',me:true}
+    ]
+  },
+  exam:{
+    title:'外門季度考核榜',
+    updated:'考核後三日公示',
+    scope:'四月初一參加本季外門考核的弟子',
+    source:'傳功峰考官與各院平時紀錄',
+    self:'尚無名次',
+    selfNote:'考核尚未舉行；目前仍可準備報名',
+    status:'本季尚未開榜。',
+    rows:[]
+  },
+  craft:{
+    title:'春季靈草辨識小試',
+    updated:'三月十五日結榜',
+    scope:'自願報名參加的外門弟子',
+    source:'丹鼎峰公開評比紀錄',
+    self:'未參加',
+    selfNote:'你的靈草作業不等同於參加這次評比',
+    status:'本次評比已結榜。',
+    rows:[
+      {rank:1,name:'沈知藥',detail:'辨識四十八種，錯一種',score:'甲上'},
+      {rank:2,name:'葉青禾',detail:'辨識四十七種，錯一種',score:'甲上'},
+      {rank:3,name:'蘇晚照',detail:'辨識四十六種，錯兩種',score:'甲'},
+      {rank:4,name:'楚映蓉',detail:'辨識四十四種',score:'甲'},
+      {rank:5,name:'方愈',detail:'辨識四十二種',score:'乙上'}
+    ]
+  }
+};
+let activeRanking='martial';
+
+function setRanking(btn){
+  activeRanking=btn.dataset.rank;
+  document.querySelectorAll('#rankingTabs button').forEach(x=>x.classList.toggle('active',x===btn));
+  renderRanking();
+}
+function renderRanking(){
+  const host=document.getElementById('rankingList');if(!host)return;
+  const board=rankingBoards[activeRanking];
+  document.getElementById('rankingTitle').textContent=board.title;
+  document.getElementById('rankingUpdated').textContent=board.updated;
+  document.getElementById('rankingScope').textContent=board.scope;
+  document.getElementById('rankingSource').textContent=board.source;
+  document.getElementById('rankingSelf').textContent=board.self;
+  document.getElementById('rankingSelfNote').textContent=board.selfNote;
+  document.getElementById('rankingStatus').textContent=board.status;
+  if(!board.rows.length){
+    host.innerHTML='<div class="empty-state">尚未開榜</div>';
+    return;
+  }
+  host.innerHTML=board.rows.map(x=>`
+    <div class="rank-row ${x.me?'me':''}">
+      <div class="rank-num ${Number(x.rank)<=3?'top':''}">${x.rank}</div>
+      <div class="rank-name"><strong>${x.name}</strong><span class="small">${x.detail}</span></div>
+      <div class="rank-score">${x.score}</div>
+    </div>`).join('');
+}
+
+function clearAssistant(){
+  if(!confirm('清空目前的問答紀錄？'))return;
+  document.getElementById('assistantLog').innerHTML='<div class="bubble ai">想查甚麼？</div>';
+  document.getElementById('assistantQuestion').value='';
+  toast('已清空');
+}
+
+function filterPlaces(btn,id){
+  btn.parentElement.querySelectorAll('button').forEach(x=>x.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.place-list').forEach(x=>x.style.display='none');
+  document.getElementById(id).style.display='block';
+}
+
+function openThread(name){
+  activeThread=name;
+  document.getElementById('threadTitle').textContent=name;
+  const body=document.getElementById('threadBody');
+  const status=document.getElementById('threadStatus');
+  let html='';
+  if(name==='宋昭昭'){
+    status.textContent='最近往來：三月十八日';
+    html='<div class="letter-thread">'
+      +'<div class="letter-card outgoing"><div class="letter-meta">你 · 三月十七日</div>昭昭，明日午時可有空？我想同你和韓芝一起用飯。</div>'
+      +'<div class="letter-card incoming"><div class="letter-meta">宋昭昭 · 三月十八日</div>桃酥：<br><br>信收到了。明日午時我會在膳堂東側等你，韓芝也會一起來。你不用特意帶甚麼，人到就好。<br><br>宋昭昭</div>'
+      +'</div>';
+  }else if(name==='爹娘'){
+    status.textContent='上一封家書運送中';
+    html='<div class="letter-thread">'
+      +'<div class="letter-card outgoing"><div class="letter-meta">你 · 三月十五日</div>爹、娘：<br><br>我在天衡宗一切安好，近日已開始學習引氣與劍術。你們不必掛念。<br><br>何桃酥</div>'
+      +'</div>';
+  }else{
+    status.textContent='尚無往來';
+    html='<div class="sub" style="padding:20px 4px">還沒有書信。</div>';
+  }
+  body.innerHTML=html;
+  document.getElementById('threadDraft').value='';
+  document.getElementById('threadModal').classList.add('open');
+}
+function closeThread(){document.getElementById('threadModal').classList.remove('open')}
+function mailTo(name){show('mail');openThread(name)}
+function newLetter(){
+  const name=prompt('收件人：','');
+  if(name)openThread(name);
+}
+function polishThread(){
+  const t=document.getElementById('threadDraft');
+  if(!t.value.trim()){
+    t.value=activeThread==='爹娘'
+      ?`爹、娘：
+
+我在宗門一切安好，近日的課業也漸漸上手。待有空時，我再寫信說些山中的見聞。
+
+何桃酥`
+      :'近來可好？我有些事情想同你說，若你得空，還望回信。';
+  }else{
+    t.value=t.value.trim()+'\n\n何桃酥';
+  }
+  toast('已潤色');
+}
+function addThreadMail(){
+  const body=document.getElementById('threadDraft').value.trim();
+  if(!body){toast('請先寫信');return}
+  const sel=document.getElementById('threadMethod');
+  const price=Number(sel.options[sel.selectedIndex].dataset.price);
+  add('寄信給 '+activeThread,sel.value+'；提交後寄出','書信',price);
+  closeThread();
+}
+
+
+function openSettings(){document.getElementById('settingsModal').classList.add('open')}
+function toggleApiKey(){
+  const input=document.getElementById('apiKey');
+  const btn=input.parentElement.querySelector('button');
+  input.type=input.type==='password'?'text':'password';
+  btn.textContent=input.type==='password'?'顯示':'隱藏';
+}
+function testConnection(){
+  const base=document.getElementById('apiBase').value.trim();
+  const key=document.getElementById('apiKey').value.trim();
+  const model=document.getElementById('extractModel').value.trim();
+  const dot=document.getElementById('connectionDot');
+  const label=document.getElementById('connectionText');
+  label.textContent='測試中…';dot.classList.remove('ok');
+  setTimeout(()=>{
+    if(base&&key&&model){
+      dot.classList.add('ok');label.textContent='連線成功（樣板模擬）';
+    }else{
+      label.textContent='請填寫 API 地址、Key 和模型';
+    }
+  },650);
+}
+function saveSettings(){
+  const immersive=document.getElementById('immersiveMode').checked;
+  document.body.classList.toggle('management-mode',!immersive);
+  applyModules();
+  document.getElementById('settingsModal').classList.remove('open');
+  toast('設定已保存');
+}
+function applyModules(){
+  const config={
+    growth:document.getElementById('moduleGrowth').checked,
+    sect:document.getElementById('moduleSect').checked,
+    world:document.getElementById('moduleWorld').checked,
+    mail:document.getElementById('moduleMail').checked
+  };
+  Object.entries(config).forEach(([id,on])=>{
+    const nav=document.querySelector('.nav button[data-id="'+id+'"]');
+    const screen=document.getElementById(id);
+    if(nav)nav.style.display=on?'':'none';
+    if(screen&&!on)screen.classList.remove('active');
+  });
+  if(!document.querySelector('.screen.active'))show('home');
+}
+
+function openAssistant(){document.getElementById('assistantModal').classList.add('open')}
+function closeAssistant(){document.getElementById('assistantModal').classList.remove('open')}
+function sendAssistant(){
+  const input=document.getElementById('assistantQuestion');
+  const q=input.value.trim();if(!q)return;
+  const log=document.getElementById('assistantLog');
+  const u=document.createElement('div');u.className='bubble user';u.textContent=q;log.appendChild(u);
+  const a=document.createElement('div');a.className='bubble ai';
+  if(q.includes('還缺')||q.includes('達標')){
+    a.textContent='目前紀錄顯示：平時作業尚缺一項，宗門任務次數也未達公告要求。靈力控制的實際考核門檻仍要以傳功堂公告為準。';
+  }else if(q.includes('林羽')){
+    a.textContent='林羽是凌劍峰弟子。現有資料只足以確認你與他有過幾次接觸，尚不足以判定他是重要人物。';
+  }else if(q.includes('靈石')){
+    a.textContent='靈石可用於宗門交易、傳信、購買丹藥與部分修煉資源。你的帳本目前記錄為 18 枚。';
+  }else{
+    a.textContent='我找到了一些相關紀錄，但目前沒有足夠證據給出確定答案。你可以再縮小到某個人物、日期或事件。';
+  }
+  log.appendChild(a);input.value='';log.scrollTop=log.scrollHeight;
+}
+function closeOuter(e,id){if(e.target.id===id)document.getElementById(id).classList.remove('open')}
+function toast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),1400);
+}
+updateRound();updatePendingCount();updateOutfitPreview();renderPlaces();renderPeople();renderActivities();renderRanking();applyModules();
+</script>
+</body></html>
