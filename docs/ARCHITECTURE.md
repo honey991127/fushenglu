@@ -1,14 +1,15 @@
 # 技術架構
 
-## 平台
+## 平台與執行邊界
 
-- iPhone TauriTavern
-- SillyTavern third-party UI extension 形式的純前端擴充
-- 外部 OpenAI-compatible API
-- Node.js 只用於開發、測試與建置
-- 執行時不依賴 Node-only server plugin
+- iPhone TauriTavern／相容 SillyTavern third-party UI extension。
+- 純瀏覽器 ES module、DOM、`fetch` 與公開宿主 context。
+- Node.js 只用於語法檢查、測試與複製建置，不進入執行時。
+- 插件 OpenAI-compatible API 與主聊天 AI 連線完全分離。
+- 逐聊天狀態只放 `chatMetadata["fushenglu.chatState"]`。
+- API 設定放插件自己的瀏覽器設定儲存；不放逐聊天資料與匯出。
 
-## 第一階段正式目錄
+## 第二階段正式目錄
 
 ```text
 manifest.json
@@ -20,6 +21,9 @@ src/
   style.css
   core/
     chat-state.js
+    analysis-schema.js
+    api-client.js
+    turn-sync.js
   integrations/
     tauritavern.js
   ui/
@@ -27,101 +31,93 @@ src/
 tests/
 ```
 
-後續模組只能按 `CODEX_TASKS.md` 逐階段加入，不在第一階段預建玩法程式。
+`mockups/ui-v13.html` 仍只供視覺與流程參考。正式 UI 是多頁殼層，不載入或複製 mockup
+單頁程式。
 
-## 宿主接口邊界
+## 核心分層
 
-- 只從公開的 `globalThis.SillyTavern.getContext()` 取得宿主能力。
-- 逐聊天資料只放在當前 context 的 `chatMetadata`，並以 `saveMetadata()` 持久化。
-- 以公開 `CHAT_CHANGED` 事件重新讀取畫面；每次操作都重新取得 context，不保存長期 `chatMetadata` 參照。
-- 入口與全屏頁只建立和管理插件自己的 DOM 節點，不查找或依賴 TauriTavern／SillyTavern 私有 DOM 結構。
-- 啟動時進行 capability detection。缺少聊天識別、`chatMetadata`、`saveMetadata()` 或聊天切換事件時，顯示錯誤並停用儲存操作。
-
-## 後續目錄方向
-
-```text
-src/
-  core/
-    lifecycle/
-    storage/
-    events/
-    schema/
-    api/
-    handoff/
-  modules/
-    ledger/
-    wardrobe/
-    skills/
-    cultivation/
-    shops/
-    activities/
-    rankings/
-    evaluations/
-    correspondence/
-    world-library/
-    assistant/
-  integrations/
-    tauritavern/
-    baibai-book/
-  ui/
-    shell/
-    screens/
-    components/
-```
+- `chat-state.js`：ChatState V2、V0／V1 遷移、完整根狀態驗證、安全匯出。
+- `analysis-schema.js`：分析 JSON Schema、JSON fence 降級解析、全有或全無驗證。
+- `api-client.js`：插件獨立設定、Key 遮蔽／日誌清理、chat completions、structured-output
+  降級及可選校驗模型。
+- `turn-sync.js`：訊息邊界、批次狀態機、預覽、待確認、交接、歷史及最小軟撤銷。
+- `tauritavern.js`：公開 context capability detection、逐聊天 metadata 原子保存及生成事件橋。
+- `app.js`：手機首頁、本輪、待確認、交接、歷史與 API 頁面。
 
 ## 資料流
 
 ```text
-插件操作 -> 逐聊天本輪暫存
-             |
-             +-- 結束本輪 -> 建立 batchId -> 聊天分析 -> Schema 驗證
-                                      -> deterministic rules
-                                      -> review_ready 預覽
-                                      -> 玩家最後確認
-                                      -> 原子帳本提交
-                                      -> 交接準備 -> 下一輪生成
+插件測試操作 ──> ChatState.draftActions
+                         |
+主聊天 user/assistant ──> 訊息槽去重 ──> 結束本輪
+                                          |
+                                          v
+               draft -> analysis_pending -> OpenAI-compatible API
+                                          -> JSON 解析 + 本地 Schema
+                                          -> 可選校驗模型
+                                          -> review_ready
+                                          -> 玩家修改／勾選／移待確認
+                                          -> committing
+                                          -> 原子寫入事件 + batchId
+                                          -> committed
+                                          -> handoff_pending
+                                          -> complete
 ```
 
-## 批次狀態機
+API、解析或保存錯誤寫為 `failed` 並保留原 `batchId`、輸入、分析進度與 `failurePhase`。
+重試依階段回到 `analysis_pending`、`committing` 或 `handoff_pending`。
 
-```text
-draft -> analysis_pending -> review_ready -> committing -> committed
-                                                    |          |
-                                                    |          +-> handoff_pending -> complete
-                                                    +-----------------------------> complete
+## 訊息邊界
 
-analysis_pending / committing / handoff_pending -> failed
-failed -> 原失敗階段重試，或在尚未提交時回到 review_ready／取消為 complete
-```
+1. 優先讀取訊息物件的穩定 ID。
+2. 穩定 ID 缺失時，用 role、send date 與名稱建立可重現的訊息槽指紋。
+3. 連時間戳也缺失時才用陣列位置，並在 UI 顯示限制。
+4. Swipe ID 與內容指紋保存在證據引用，但不改變訊息槽 ID。
+5. 成功完成批次才加入 `processedSlotKeys` 並更新 `lastSuccessfulIndex`。
+6. 玩家取消未提交批次時加入 `ignoredSlotKeys`，避免同一取消內容反覆分析。
 
-- `draft`：已建立 `batchId` 並凍結本輪暫存操作。
-- `analysis_pending`：分析中或等待用相同 `batchId` 重試。
-- `review_ready`：預覽已完成，等待玩家最後確認；正式帳本未變更。
-- `committing`：以 `batchId` 執行原子提交。
-- `committed`：帳本已成功且只成功一次。
-- `handoff_pending`：等待建立或注入主聊天交接。
-- `complete`：批次已完成，或未提交內容已明確取消。
-- `failed`：保存 `failurePhase` 與錯誤摘要，以決定安全重試位置。
+這個設計刻意不把編輯或替代 Swipe 當新取得的遊戲結果。無穩定 ID 的宿主仍可能在刪除、
+跨裝置匯入或整段重排後失去訊息槽一致性，因此必須保留 UI 警告。
 
-## 原子提交與防重複
+## API 安全
 
-- 正式帳本交易與 `batchId` 提交紀錄必須在同一原子操作中完成。
-- `batchId` 是提交冪等鍵；同一 `batchId` 的再次提交只回傳既有結果，不重做副作用。
-- 分析失敗時，暫存操作仍未進正式帳本。玩家可重試分析、只提交確定操作或取消。
-- 提交失敗時只能用相同 `batchId` 恢復；不得生成新批次來重放同一操作。
-- 交接失敗不得回滾已提交帳本，也不得再次執行交易。
-- 保存 `sourceMessageId`、`sourceEventId`、`dedupeKey`、`anchorSwipeId` 與 `branchFingerprint`，避免主聊天重述、Swipe、App 重開或重複點擊造成重複效果。
+- 設定頁載入時不把已保存 API Key 放入 DOM，只顯示尾碼遮蔽 placeholder。
+- 顯示／隱藏只控制本次新輸入值。
+- 匯出設定省略 `apiKey`；ChatState 本身不保存 API 設定。
+- 安全 logger 會清除 `apiKey`、Authorization、token 欄位與已知秘密字串。
+- 未支援 `response_format: json_schema` 的端點只在明確 400／404／422 相容性錯誤時，
+  用相同批次改送普通 JSON 請求；結果仍須本地 Schema 全量通過。
+- 分析模型不取得完整插件資料庫，只取得本批新增訊息引用與內容。
 
-## 逐聊天儲存
+## 宿主公開接口
 
-- `ChatState` 保存於每段聊天自己的 metadata 命名空間。
-- 每個保存物件都包含 `schemaVersion`。
-- 讀取時執行逐版本遷移；遇到未知未來版本或損壞資料時停止覆寫並顯示錯誤。
-- 不使用全域 localStorage 作為逐聊天資料來源。
+必要核心：
 
-## API 與柏寶書
+- `SillyTavern.getContext()`
+- `getCurrentChatId()` 或 `chatId`
+- `chat`
+- `chatMetadata`
+- `saveMetadata()`
+- `eventSource.on`
+- `eventTypes.CHAT_CHANGED`
 
-- API Key 不進匯出、不進日誌。
-- API 設定與主聊天連接分離。
-- 柏寶書為可選唯讀來源。
-- 新插件是交易、衣櫥、技能、活動、排名、評價和書信的權威來源。
+最小交接另外需要：
+
+- `setExtensionPrompt()`
+- `saveChat()`
+- `GENERATION_AFTER_COMMANDS`（可降級到 `GENERATION_STARTED`）
+- `MESSAGE_RECEIVED`
+- 可選 `GENERATION_STOPPED`
+
+交接以 `IN_CHAT`、depth 0、system role 注入一段一致性提示。`MESSAGE_RECEIVED` 不是
+「已保存」事件，因此橋接器在接收後顯式呼叫 `saveChat()`；只有該 Promise 成功才消耗
+`next_generation`。
+
+## 已知接口限制
+
+- 官方公開事件沒有獨立的「assistant 回覆已成功持久化」事件。顯式 `saveChat()` 是目前最小
+  可驗證替代；TauriTavern 若裁剪此方法，交接可注入但不會自動消耗。
+- 標準 SillyTavern 訊息通常以陣列位置作顯示 ID，未保證跨編輯穩定 UUID。
+- iOS WKWebView 對第三方 API 的 CORS、TLS 與本機網路權限由 TauriTavern 封裝決定。
+- metadata 保存不是宿主提供的資料庫交易；本插件以完整物件替換、失敗回復及 `batchId`
+  冪等集合提供單 metadata 範圍的原子性。

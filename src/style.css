@@ -3,6 +3,20 @@
   box-sizing: border-box;
 }
 
+.fushenglu-extension {
+  --fsl-bg: #121116;
+  --fsl-surface: rgba(255, 255, 255, 0.06);
+  --fsl-border: rgba(255, 239, 209, 0.14);
+  --fsl-text: #f8f0e4;
+  --fsl-muted: #bdb2a7;
+  --fsl-gold: #e2bf7d;
+  --fsl-accent: #7b4033;
+  --fsl-danger: #a64e51;
+  color: var(--fsl-text);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "PingFang TC",
+    "Noto Sans TC", sans-serif;
+}
+
 .fushenglu-entry {
   position: fixed;
   right: max(14px, env(safe-area-inset-right));
@@ -21,14 +35,8 @@
   touch-action: manipulation;
 }
 
-.fushenglu-entry:focus-visible,
-.fushenglu-fullscreen button:focus-visible,
-.fushenglu-input:focus-visible {
-  outline: 3px solid #e7bd6f;
-  outline-offset: 2px;
-}
-
-.fushenglu-fullscreen[hidden] {
+.fushenglu-fullscreen[hidden],
+.fushenglu-screen[hidden] {
   display: none !important;
 }
 
@@ -37,18 +45,16 @@
   inset: 0;
   z-index: 2147483000;
   display: flex;
-  min-width: 0;
   width: 100%;
+  min-width: 0;
   height: 100vh;
   height: 100dvh;
   flex-direction: column;
   overflow: hidden;
-  color: #f7efe2;
+  color: var(--fsl-text);
   background:
-    radial-gradient(circle at 88% 8%, rgba(151, 84, 61, 0.34), transparent 34%),
-    linear-gradient(165deg, #25161c 0%, #17131a 56%, #111218 100%);
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "PingFang TC",
-    "Noto Sans TC", sans-serif;
+    radial-gradient(circle at 88% 7%, rgba(151, 84, 61, 0.28), transparent 31%),
+    linear-gradient(165deg, #25161c 0%, #17131a 56%, var(--fsl-bg) 100%);
   overscroll-behavior: contain;
 }
 
@@ -57,169 +63,538 @@
   flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: 12px;
   padding:
-    calc(18px + env(safe-area-inset-top))
-    max(20px, env(safe-area-inset-right))
-    16px
-    max(20px, env(safe-area-inset-left));
-  border-bottom: 1px solid rgba(255, 239, 209, 0.14);
-  background: rgba(25, 15, 20, 0.78);
+    calc(12px + env(safe-area-inset-top))
+    max(14px, env(safe-area-inset-right))
+    10px
+    max(16px, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--fsl-border);
+  background: rgba(25, 15, 20, 0.84);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
 }
 
 .fushenglu-header h1,
+.fushenglu-header p,
 .fushenglu-card h2,
-.fushenglu-eyebrow {
+.fushenglu-section-heading h2,
+.fushenglu-section-heading p,
+.fushenglu-hero h2,
+.fushenglu-hero p {
   margin: 0;
 }
 
 .fushenglu-header h1 {
-  font: 600 27px/1.2 ui-serif, "Songti TC", "Noto Serif TC", serif;
-  letter-spacing: 0.14em;
+  font: 600 23px/1.2 ui-serif, "Songti TC", "Noto Serif TC", serif;
+  letter-spacing: 0.13em;
 }
 
-.fushenglu-eyebrow {
-  margin-bottom: 4px;
-  color: #d6b77b;
-  font-size: 12px;
+.fushenglu-eyebrow,
+.fushenglu-section-heading p,
+.fushenglu-hero > p {
+  color: var(--fsl-gold);
+  font-size: 11px;
   letter-spacing: 0.1em;
 }
 
-.fushenglu-close,
-.fushenglu-actions button {
-  min-height: 44px;
+.fushenglu-header-actions {
+  display: flex;
+  gap: 7px;
+}
+
+.fushenglu-header button,
+.fushenglu-nav button,
+.fushenglu-card button,
+.fushenglu-screen > button,
+.fushenglu-sticky-action button,
+.fushenglu-section-heading button {
+  min-height: 42px;
   border: 1px solid rgba(255, 239, 209, 0.22);
-  border-radius: 12px;
-  padding: 9px 15px;
+  border-radius: 11px;
+  padding: 8px 12px;
   color: #fff8e8;
   background: rgba(255, 255, 255, 0.08);
   font: inherit;
   touch-action: manipulation;
 }
 
-.fushenglu-close {
+.fushenglu-header button {
+  min-height: 38px;
+  padding-inline: 10px;
+  font-size: 13px;
+}
+
+.fushenglu-entry:focus-visible,
+.fushenglu-fullscreen button:focus-visible,
+.fushenglu-fullscreen input:focus-visible,
+.fushenglu-fullscreen textarea:focus-visible,
+.fushenglu-fullscreen select:focus-visible {
+  outline: 3px solid var(--fsl-gold);
+  outline-offset: 2px;
+}
+
+.fushenglu-global-status {
+  display: block;
   flex: 0 0 auto;
+  min-height: 31px;
+  padding: 7px max(16px, env(safe-area-inset-right)) 7px
+    max(16px, env(safe-area-inset-left));
+  overflow: hidden;
+  color: #cbc0b4;
+  background: rgba(0, 0, 0, 0.22);
+  font-size: 12px;
+  line-height: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fushenglu-global-status[data-kind="success"] {
+  color: #d9efd8;
+  background: rgba(49, 102, 67, 0.28);
+}
+
+.fushenglu-global-status[data-kind="warning"] {
+  color: #ffe0a5;
+  background: rgba(128, 90, 31, 0.28);
+}
+
+.fushenglu-global-status[data-kind="error"] {
+  color: #ffd7d1;
+  background: rgba(139, 45, 50, 0.3);
 }
 
 .fushenglu-content {
-  width: min(100%, 680px);
+  width: min(100%, 720px);
+  min-height: 0;
   margin: 0 auto;
   padding:
-    22px
-    max(18px, env(safe-area-inset-right))
-    calc(28px + env(safe-area-inset-bottom))
-    max(18px, env(safe-area-inset-left));
+    18px
+    max(14px, env(safe-area-inset-right))
+    calc(118px + env(safe-area-inset-bottom))
+    max(14px, env(safe-area-inset-left));
   overflow-x: hidden;
   overflow-y: auto;
+  scroll-padding-bottom: 150px;
   -webkit-overflow-scrolling: touch;
 }
 
-.fushenglu-card {
-  margin-bottom: 16px;
-  border: 1px solid rgba(255, 239, 209, 0.14);
-  border-radius: 18px;
-  padding: 20px;
-  background: rgba(255, 255, 255, 0.055);
-  box-shadow: 0 16px 48px rgba(9, 6, 9, 0.18);
+.fushenglu-screen {
+  min-height: 100%;
 }
 
-.fushenglu-card h2 {
+.fushenglu-hero,
+.fushenglu-card,
+.fushenglu-empty,
+.fushenglu-history-item,
+.fushenglu-notice {
   margin-bottom: 14px;
-  color: #f0d6a2;
-  font: 600 18px/1.35 ui-serif, "Songti TC", "Noto Serif TC", serif;
-  letter-spacing: 0.06em;
+  border: 1px solid var(--fsl-border);
+  border-radius: 17px;
+  background: var(--fsl-surface);
+  box-shadow: 0 14px 42px rgba(9, 6, 9, 0.15);
 }
 
-.fushenglu-chat-id,
-.fushenglu-status {
-  display: block;
-  min-width: 0;
+.fushenglu-hero {
+  padding: 22px 19px;
+  background:
+    linear-gradient(135deg, rgba(138, 71, 53, 0.28), rgba(255, 255, 255, 0.035)),
+    var(--fsl-surface);
+}
+
+.fushenglu-hero h2 {
+  margin-top: 4px;
   overflow-wrap: anywhere;
+  font: 600 21px/1.4 ui-serif, "Songti TC", "Noto Serif TC", serif;
 }
 
-.fushenglu-chat-id {
-  color: #fffaf0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 14px;
+.fushenglu-stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 15px;
+}
+
+.fushenglu-stat-row span,
+.fushenglu-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 27px;
+  border-radius: 999px;
+  padding: 4px 9px;
+  color: #ead9bc;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+}
+
+.fushenglu-card,
+.fushenglu-empty {
+  padding: 17px;
+}
+
+.fushenglu-card h2,
+.fushenglu-empty h2 {
+  margin: 0 0 12px;
+  color: #f0d6a2;
+  font: 600 17px/1.35 ui-serif, "Songti TC", "Noto Serif TC", serif;
+  letter-spacing: 0.04em;
+}
+
+.fushenglu-empty {
+  padding-block: 42px;
+  text-align: center;
+}
+
+.fushenglu-empty p,
+.fushenglu-muted {
+  color: var(--fsl-muted);
+}
+
+.fushenglu-notice {
+  padding: 12px 14px;
+  color: #ffe0a5;
+  background: rgba(128, 90, 31, 0.22);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.fushenglu-notice[data-kind="error"] {
+  color: #ffd7d1;
+  background: rgba(139, 45, 50, 0.25);
 }
 
 .fushenglu-help {
-  margin: -5px 0 18px;
-  color: #c9bdaf;
-  font-size: 14px;
-  line-height: 1.55;
+  margin: -5px 0 13px;
+  color: var(--fsl-muted);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .fushenglu-label {
   display: block;
-  margin-bottom: 8px;
+  margin: 0 0 12px;
   color: #e6ded3;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
-.fushenglu-input {
+.fushenglu-input,
+.fushenglu-textarea,
+.fushenglu-fullscreen select {
   display: block;
   width: 100%;
-  min-height: 48px;
+  min-height: 46px;
+  margin-top: 6px;
   border: 1px solid rgba(255, 239, 209, 0.22);
-  border-radius: 12px;
-  padding: 11px 13px;
+  border-radius: 11px;
+  padding: 10px 12px;
   color: #fffaf2;
-  background: rgba(4, 3, 5, 0.35);
-  font: inherit;
+  background: rgba(4, 3, 5, 0.38);
+  font: 400 16px/1.4 inherit;
 }
 
-.fushenglu-input::placeholder {
-  color: #998d86;
+.fushenglu-textarea {
+  min-height: 86px;
+  resize: vertical;
+}
+
+.fushenglu-input::placeholder,
+.fushenglu-textarea::placeholder {
+  color: #948982;
+}
+
+.fushenglu-inline-form,
+.fushenglu-key-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.fushenglu-key-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.fushenglu-key-row .fushenglu-input {
+  margin-top: 0;
+}
+
+.fushenglu-two-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .fushenglu-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
 }
 
-.fushenglu-actions button:first-child {
-  border-color: rgba(232, 190, 110, 0.45);
-  background: linear-gradient(145deg, #76402f, #572a2a);
+.fushenglu-actions-four {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.fushenglu-actions button:disabled,
-.fushenglu-input:disabled {
-  cursor: not-allowed;
-  opacity: 0.48;
+.fushenglu-primary-button {
+  border-color: rgba(232, 190, 110, 0.45) !important;
+  background: linear-gradient(145deg, #7b4331, #592a2b) !important;
+  font-weight: 650 !important;
 }
 
-.fushenglu-status {
-  margin-top: 16px;
-  border-radius: 12px;
-  padding: 12px 13px;
-  color: #d8cfc4;
-  background: rgba(0, 0, 0, 0.2);
+.fushenglu-secondary-button {
+  width: 100%;
+}
+
+.fushenglu-danger-button {
+  border-color: rgba(222, 104, 109, 0.4) !important;
+  color: #ffd9d8 !important;
+  background: rgba(134, 50, 55, 0.26) !important;
+}
+
+.fushenglu-small-button {
+  width: 100%;
+  min-height: 38px !important;
+  margin-top: 10px;
+  font-size: 13px !important;
+}
+
+.fushenglu-plain-list,
+.fushenglu-review-list,
+.fushenglu-source-list {
+  margin: 13px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fushenglu-plain-list li,
+.fushenglu-review-list li {
+  padding: 9px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.fushenglu-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 2px 2px 14px;
+}
+
+.fushenglu-section-heading h2 {
+  margin-top: 3px;
+  font: 600 23px/1.3 ui-serif, "Songti TC", "Noto Serif TC", serif;
+}
+
+.fushenglu-change {
+  margin-top: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 13px;
+  padding: 13px;
+  background: rgba(0, 0, 0, 0.17);
+}
+
+.fushenglu-change-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  margin-bottom: 11px;
+}
+
+.fushenglu-change-head h2 {
+  margin: 0;
+}
+
+.fushenglu-change-head select {
+  width: auto;
+  min-width: 91px;
+  min-height: 38px;
+  margin-top: 0;
+  padding-block: 6px;
   font-size: 14px;
-  line-height: 1.5;
 }
 
-.fushenglu-status[data-kind="success"] {
-  color: #d9efd8;
-  background: rgba(49, 102, 67, 0.26);
+.fushenglu-check {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  color: #f5eadc;
+  line-height: 1.4;
 }
 
-.fushenglu-status[data-kind="error"] {
-  color: #ffd7d1;
-  background: rgba(139, 45, 50, 0.28);
+.fushenglu-check input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  accent-color: #a86545;
+}
+
+.fushenglu-meta {
+  margin: 13px 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 8px;
+  color: #c5b9ad;
+  font-size: 12px;
+}
+
+.fushenglu-meta div {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.fushenglu-meta dt {
+  color: #9f9389;
+}
+
+.fushenglu-meta dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.fushenglu-management-only {
+  display: none !important;
+}
+
+.fushenglu-extension[data-mode="management"] .fushenglu-management-only {
+  display: block !important;
+}
+
+.fushenglu-source-list li {
+  margin-bottom: 9px;
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.fushenglu-source-list strong,
+.fushenglu-source-list span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.fushenglu-source-list span {
+  margin-top: 3px;
+  color: #a89b91;
+  font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.fushenglu-source-list p {
+  margin: 8px 0 0;
+  color: #ddd2c5;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.fushenglu-action-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.fushenglu-sticky-action {
+  position: relative;
+  margin: 18px 0 0;
+}
+
+.fushenglu-sticky-action > button {
+  width: 100%;
+}
+
+.fushenglu-history-item {
+  padding: 0 14px;
+}
+
+.fushenglu-history-item summary {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  color: #e8ddd0;
+  font-size: 13px;
+}
+
+.fushenglu-history-item summary strong {
+  color: var(--fsl-gold);
+}
+
+.fushenglu-meta-visible {
+  margin-bottom: 14px;
+}
+
+.fushenglu-api-form > .fushenglu-label {
+  margin-bottom: 15px;
+}
+
+.fushenglu-nav {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  padding:
+    7px
+    max(5px, env(safe-area-inset-right))
+    calc(7px + env(safe-area-inset-bottom))
+    max(5px, env(safe-area-inset-left));
+  border-top: 1px solid var(--fsl-border);
+  background: rgba(18, 14, 18, 0.93);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.fushenglu-nav button {
+  min-width: 0;
+  min-height: 45px;
+  border: 0;
+  border-radius: 10px;
+  padding: 6px 2px;
+  color: #a99d91;
+  background: transparent;
+  font-size: 11px;
+}
+
+.fushenglu-nav button[aria-current="page"] {
+  color: #ffe8ba;
+  background: rgba(151, 84, 61, 0.27);
+}
+
+.fushenglu-fullscreen button:disabled,
+.fushenglu-fullscreen input:disabled,
+.fushenglu-fullscreen textarea:disabled,
+.fushenglu-fullscreen select:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 html.fushenglu-is-open {
   overflow: hidden;
 }
 
+@media (max-width: 370px) {
+  .fushenglu-two-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .fushenglu-header-actions {
+    gap: 4px;
+  }
+
+  .fushenglu-header button {
+    padding-inline: 8px;
+  }
+}
+
 @media (min-width: 700px) {
   .fushenglu-content {
-    padding-top: 34px;
+    padding-top: 28px;
   }
 }
 

@@ -1,4 +1,11 @@
-import { TauriTavernChatStateStore } from './integrations/tauritavern.js';
+import {
+  BrowserApiSettingsStore,
+  OpenAICompatibleClient,
+} from './core/api-client.js';
+import {
+  TauriTavernChatStateStore,
+  TauriTavernHandoffBridge,
+} from './integrations/tauritavern.js';
 import { mountFushengluApp } from './ui/app.js';
 
 let appController = null;
@@ -26,7 +33,27 @@ export function startFushenglu() {
   }
 
   const store = new TauriTavernChatStateStore();
-  appController = mountFushengluApp({ store });
+  let storage = null;
+
+  try {
+    storage = globalThis.localStorage;
+  } catch {
+    // 某些 iOS WebView 隱私模式會拒絕 localStorage；設定 store 會改用記憶體。
+  }
+
+  const settingsStore = new BrowserApiSettingsStore({ storage });
+  const apiClient = new OpenAICompatibleClient({ settingsStore });
+  const handoffBridge = new TauriTavernHandoffBridge({ store });
+  const stopHandoff = handoffBridge.start();
+  const mounted = mountFushengluApp({ store, settingsStore, apiClient });
+  appController = {
+    ...mounted,
+    destroy() {
+      stopHandoff();
+      mounted.destroy();
+      appController = null;
+    },
+  };
   return appController;
 }
 

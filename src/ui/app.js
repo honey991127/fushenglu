@@ -1,24 +1,74 @@
+import { maskApiKey } from '../core/api-client.js';
+import {
+  addDraftAction,
+  beginTurnBatch,
+  cancelBatch,
+  commitBatch,
+  completeBatch,
+  completeBatchAnalysis,
+  createDraftTestAction,
+  failBatch,
+  getBatch,
+  getResumableBatch,
+  prepareBatchHandoff,
+  recoverCertainActionsOnly,
+  resolvePendingItem,
+  retryBatch,
+  startBatchCommit,
+  undoLatestCommittedBatch,
+  updateBatchHandoffDraft,
+  updateBatchProposal,
+  updateHandoffItem,
+  normalizeChatMessages,
+} from '../core/turn-sync.js';
 import { NoActiveChatError } from '../integrations/tauritavern.js';
 
 const APP_ROOT_ID = 'fushenglu-extension-root';
 
-function setStatus(elements, message, kind = 'neutral') {
-  elements.status.textContent = message;
-  elements.status.dataset.kind = kind;
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
 }
 
-function setControlsDisabled(elements, disabled) {
-  for (const button of elements.storageButtons) {
-    button.disabled = disabled;
+function safeJson(value) {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function parseEditedValue(value) {
+  const text = String(value ?? '').trim();
+
+  if (!text) {
+    return '';
   }
 
-  elements.sampleInput.disabled = disabled;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function makeId(prefix) {
+  return `${prefix}_${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}_${Math.random().toString(36).slice(2)}`}`;
+}
+
+function now() {
+  return new Date().toISOString();
 }
 
 function createMarkup(documentRef) {
   const root = documentRef.createElement('div');
   root.id = APP_ROOT_ID;
   root.className = 'fushenglu-extension';
+  root.dataset.mode = 'immersive';
   root.innerHTML = `
     <button
       type="button"
@@ -38,50 +88,166 @@ function createMarkup(documentRef) {
     >
       <header class="fushenglu-header">
         <div>
-          <p class="fushenglu-eyebrow">逐聊天儲存原型</p>
+          <p class="fushenglu-eyebrow">每輪同步</p>
           <h1 id="fushenglu-title">浮生錄</h1>
         </div>
-        <button type="button" class="fushenglu-close" aria-label="關閉浮生錄">關閉</button>
+        <div class="fushenglu-header-actions">
+          <button type="button" data-action="toggle-mode" aria-pressed="false">管理</button>
+          <button type="button" class="fushenglu-close" data-action="close" aria-label="關閉浮生錄">關閉</button>
+        </div>
       </header>
+      <output class="fushenglu-global-status" data-kind="neutral" aria-live="polite">
+        準備中…
+      </output>
       <main class="fushenglu-content">
-        <section class="fushenglu-card" aria-labelledby="fushenglu-chat-heading">
-          <h2 id="fushenglu-chat-heading">目前聊天</h2>
-          <output class="fushenglu-chat-id" aria-live="polite">偵測中…</output>
-        </section>
-        <section class="fushenglu-card" aria-labelledby="fushenglu-storage-heading">
-          <h2 id="fushenglu-storage-heading">儲存測試</h2>
-          <p class="fushenglu-help">示例值只會保存在目前聊天的 metadata。</p>
-          <label class="fushenglu-label" for="fushenglu-sample-value">示例值</label>
-          <input
-            id="fushenglu-sample-value"
-            class="fushenglu-input"
-            type="text"
-            maxlength="200"
-            autocomplete="off"
-            placeholder="輸入目前聊天專用的測試文字"
-          />
-          <div class="fushenglu-actions">
-            <button type="button" data-action="write">寫入</button>
-            <button type="button" data-action="read">讀取</button>
-            <button type="button" data-action="clear">清空</button>
-          </div>
-          <output class="fushenglu-status" data-kind="neutral" aria-live="polite">
-            尚未測試
-          </output>
-        </section>
+        <section class="fushenglu-screen" data-screen="home"></section>
+        <section class="fushenglu-screen" data-screen="review" hidden></section>
+        <section class="fushenglu-screen" data-screen="pending" hidden></section>
+        <section class="fushenglu-screen" data-screen="handoff" hidden></section>
+        <section class="fushenglu-screen" data-screen="history" hidden></section>
+        <section class="fushenglu-screen" data-screen="api" hidden></section>
       </main>
+      <nav class="fushenglu-nav" aria-label="浮生錄頁面">
+        <button type="button" data-nav="home" aria-current="page">首頁</button>
+        <button type="button" data-nav="review">本輪</button>
+        <button type="button" data-nav="pending">待確認</button>
+        <button type="button" data-nav="handoff">交接</button>
+        <button type="button" data-nav="history">歷史</button>
+        <button type="button" data-nav="api">API</button>
+      </nav>
     </section>
   `;
-
   return root;
+}
+
+function statusLabel(status) {
+  const labels = {
+    draft: '暫存',
+    analysis_pending: '分析中',
+    review_ready: '待最後確認',
+    committing: '提交中',
+    committed: '已提交',
+    handoff_pending: '準備交接',
+    complete: '完成',
+    failed: '失敗',
+  };
+  return labels[status] ?? status;
+}
+
+function pendingLabel(kind) {
+  const labels = {
+    story_time: '故事時間',
+    inventory_currency: '貨幣與物品',
+    wardrobe: '衣物所有權',
+    person: '人物',
+    place: '地點',
+    skill: '技能',
+    cultivation: '修煉',
+    evaluation: '評價',
+    conflict: '資料衝突',
+    other: '其他',
+  };
+  return labels[kind] ?? kind;
+}
+
+function renderProposal(item, batch) {
+  const checked = item.reviewDisposition === 'apply' ? 'checked' : '';
+  return `
+    <article class="fushenglu-change" data-proposal="${escapeHtml(item.proposalId)}">
+      <div class="fushenglu-change-head">
+        <label class="fushenglu-check">
+          <input
+            type="checkbox"
+            data-action="toggle-proposal"
+            data-batch-id="${escapeHtml(batch.batchId)}"
+            data-proposal-id="${escapeHtml(item.proposalId)}"
+            ${checked}
+          />
+          <span>${escapeHtml(item.kind)} · ${escapeHtml(item.operation)}</span>
+        </label>
+        <select
+          data-action="proposal-disposition"
+          data-batch-id="${escapeHtml(batch.batchId)}"
+          data-proposal-id="${escapeHtml(item.proposalId)}"
+          aria-label="候選處理方式"
+        >
+          <option value="apply" ${item.reviewDisposition === 'apply' ? 'selected' : ''}>套用</option>
+          <option value="pending" ${item.reviewDisposition === 'pending' ? 'selected' : ''}>待確認</option>
+          <option value="reject" ${item.reviewDisposition === 'reject' ? 'selected' : ''}>不採用</option>
+        </select>
+      </div>
+      <label class="fushenglu-label">
+        操作
+        <input class="fushenglu-input" data-proposal-operation value="${escapeHtml(item.operation)}" />
+      </label>
+      <label class="fushenglu-label">
+        內容
+        <textarea class="fushenglu-textarea" data-proposal-value>${escapeHtml(safeJson(item.value))}</textarea>
+      </label>
+      <button
+        type="button"
+        class="fushenglu-small-button"
+        data-action="save-proposal"
+        data-batch-id="${escapeHtml(batch.batchId)}"
+        data-proposal-id="${escapeHtml(item.proposalId)}"
+      >儲存修改</button>
+      <dl class="fushenglu-management-only fushenglu-meta">
+        <div><dt>信心</dt><dd>${escapeHtml(item.confidence)}</dd></div>
+        <div><dt>嚴重度</dt><dd>${escapeHtml(item.severity)}</dd></div>
+        <div><dt>理由</dt><dd>${escapeHtml(item.reason)}</dd></div>
+        <div><dt>去重鍵</dt><dd>${escapeHtml(item.dedupeKey)}</dd></div>
+        <div><dt>證據</dt><dd>${escapeHtml(item.evidenceMessageRef)}</dd></div>
+        ${item.timelineContext ? `<div><dt>時間語境</dt><dd>${escapeHtml(item.timelineContext)}</dd></div>` : ''}
+      </dl>
+    </article>
+  `;
+}
+
+function renderHandoffDraft(draft, batch) {
+  return `
+    <article class="fushenglu-change">
+      <label class="fushenglu-check">
+        <input
+          type="checkbox"
+          data-action="handoff-draft-active"
+          data-batch-id="${escapeHtml(batch.batchId)}"
+          data-draft-id="${escapeHtml(draft.draftId)}"
+          ${draft.active ? 'checked' : ''}
+        />
+        <span>提供給主聊天</span>
+      </label>
+      <textarea
+        class="fushenglu-textarea"
+        data-handoff-draft-text
+      >${escapeHtml(draft.text)}</textarea>
+      <select
+        data-action="handoff-draft-mode"
+        data-batch-id="${escapeHtml(batch.batchId)}"
+        data-draft-id="${escapeHtml(draft.draftId)}"
+      >
+        <option value="until_changed" ${draft.mode === 'until_changed' ? 'selected' : ''}>直到改變</option>
+        <option value="next_generation" ${draft.mode === 'next_generation' ? 'selected' : ''}>只提供下一輪</option>
+        <option value="never" ${draft.mode === 'never' ? 'selected' : ''}>不提供</option>
+      </select>
+      <button
+        type="button"
+        class="fushenglu-small-button"
+        data-action="save-handoff-draft"
+        data-batch-id="${escapeHtml(batch.batchId)}"
+        data-draft-id="${escapeHtml(draft.draftId)}"
+      >儲存交接</button>
+    </article>
+  `;
 }
 
 export function mountFushengluApp({
   store,
+  settingsStore,
+  apiClient,
   documentRef = document,
 } = {}) {
-  if (!store) {
-    throw new TypeError('mountFushengluApp 需要 store');
+  if (!store || !settingsStore || !apiClient) {
+    throw new TypeError('mountFushengluApp 需要 store、settingsStore 與 apiClient');
   }
 
   const existingRoot = documentRef.getElementById(APP_ROOT_ID);
@@ -95,20 +261,860 @@ export function mountFushengluApp({
 
   const root = createMarkup(documentRef);
   documentRef.body.append(root);
-
   const elements = {
     entry: root.querySelector('.fushenglu-entry'),
     fullscreen: root.querySelector('.fushenglu-fullscreen'),
-    close: root.querySelector('.fushenglu-close'),
-    chatId: root.querySelector('.fushenglu-chat-id'),
-    sampleInput: root.querySelector('.fushenglu-input'),
-    storageButtons: [...root.querySelectorAll('[data-action]')],
-    status: root.querySelector('.fushenglu-status'),
+    content: root.querySelector('.fushenglu-content'),
+    status: root.querySelector('.fushenglu-global-status'),
+    screens: new Map(
+      [...root.querySelectorAll('[data-screen]')].map((screen) => [
+        screen.dataset.screen,
+        screen,
+      ]),
+    ),
+    navButtons: [...root.querySelectorAll('[data-nav]')],
+    modeButton: root.querySelector('[data-action="toggle-mode"]'),
   };
-
+  let state = null;
+  let chatId = null;
+  let currentScreen = 'home';
   let busy = false;
+  let liveMessageCapability = null;
   let lastFocusedElement = null;
   let unsubscribe = () => {};
+
+  function setStatus(message, kind = 'neutral') {
+    elements.status.textContent = message;
+    elements.status.dataset.kind = kind;
+  }
+
+  function setBusy(nextBusy) {
+    busy = nextBusy;
+
+    for (const control of root.querySelectorAll(
+      'button[data-action], button[data-nav], input, textarea, select',
+    )) {
+      if (control.dataset.action !== 'close') {
+        control.disabled = nextBusy;
+      }
+    }
+  }
+
+  function showScreen(name) {
+    currentScreen = elements.screens.has(name) ? name : 'home';
+
+    for (const [screenName, screen] of elements.screens) {
+      screen.hidden = screenName !== currentScreen;
+    }
+
+    for (const button of elements.navButtons) {
+      button.setAttribute(
+        'aria-current',
+        button.dataset.nav === currentScreen ? 'page' : 'false',
+      );
+    }
+
+    elements.content.scrollTop = 0;
+  }
+
+  function renderHome() {
+    const screen = elements.screens.get('home');
+    const activePending =
+      state?.pendingItems.filter((item) =>
+        ['pending', 'edited', 'deferred'].includes(item.status),
+      ).length ?? 0;
+    const latestBatch = state?.batches.at(-1) ?? null;
+    const limitation = liveMessageCapability
+      ? liveMessageCapability.limitation
+      : state?.sync.limitation;
+    screen.innerHTML = `
+      <section class="fushenglu-hero">
+        <p>目前聊天</p>
+        <h2>${escapeHtml(chatId ?? '尚未選擇')}</h2>
+        <div class="fushenglu-stat-row">
+          <span>暫存 ${state?.draftActions.length ?? 0}</span>
+          <span>待確認 ${activePending}</span>
+          <span>${latestBatch ? statusLabel(latestBatch.status) : '尚無批次'}</span>
+        </div>
+      </section>
+      ${
+        limitation
+          ? `<aside class="fushenglu-notice" data-kind="warning">${escapeHtml(limitation)}</aside>`
+          : ''
+      }
+      <section class="fushenglu-card">
+        <h2>本輪操作</h2>
+        <p class="fushenglu-help">第二階段只保存測試操作，不建立商店或衣櫥。</p>
+        <label class="fushenglu-label" for="fushenglu-test-action">測試操作</label>
+        <div class="fushenglu-inline-form">
+          <input id="fushenglu-test-action" class="fushenglu-input" maxlength="200" placeholder="例如：記錄一項確定操作" />
+          <button type="button" data-action="add-test-action">暫存</button>
+        </div>
+        <ul class="fushenglu-plain-list">
+          ${(state?.draftActions ?? [])
+            .map((action) => `<li>${escapeHtml(action.value)}</li>`)
+            .join('') || '<li class="fushenglu-muted">本輪沒有插件操作也可結束。</li>'}
+        </ul>
+      </section>
+      <section class="fushenglu-card">
+        <h2>自然語言修正</h2>
+        <textarea id="fushenglu-correction" class="fushenglu-textarea" placeholder="我沒有收下那件披風"></textarea>
+        <button type="button" class="fushenglu-secondary-button" data-action="analyze-correction">建立修改預覽</button>
+      </section>
+      <div class="fushenglu-sticky-action">
+        <button type="button" class="fushenglu-primary-button" data-action="end-turn">結束本輪</button>
+      </div>
+    `;
+  }
+
+  function reviewBatch() {
+    return (
+      getResumableBatch(state) ??
+      [...state.batches].reverse().find((batch) => batch.source !== 'pending_resolution') ??
+      null
+    );
+  }
+
+  function renderReview() {
+    const screen = elements.screens.get('review');
+    const batch = state ? reviewBatch() : null;
+
+    if (!batch) {
+      screen.innerHTML = `
+        <section class="fushenglu-empty">
+          <h2>尚無本輪預覽</h2>
+          <p>回到首頁按「結束本輪」。</p>
+        </section>
+      `;
+      return;
+    }
+
+    const actions = batch.draftActions
+      .map(
+        (action) => `
+          <li>
+            <label class="fushenglu-check">
+              <input type="checkbox" checked disabled />
+              <span>${escapeHtml(action.value)}</span>
+            </label>
+          </li>
+        `,
+      )
+      .join('');
+    const changes = batch.detectedChanges.map((item) => renderProposal(item, batch)).join('');
+    const uncertain = batch.uncertainItems.map((item) => renderProposal(item, batch)).join('');
+    let footer = '';
+
+    if (batch.status === 'failed') {
+      footer = `
+        <div class="fushenglu-action-stack">
+          <button type="button" class="fushenglu-primary-button" data-action="retry-batch" data-batch-id="${escapeHtml(batch.batchId)}">重新分析／繼續</button>
+          ${
+            batch.failurePhase === 'analysis'
+              ? `<button type="button" data-action="certain-only" data-batch-id="${escapeHtml(batch.batchId)}">只提交插件內確定操作</button>`
+              : ''
+          }
+          <button type="button" class="fushenglu-danger-button" data-action="cancel-batch" data-batch-id="${escapeHtml(batch.batchId)}">取消本輪</button>
+        </div>
+      `;
+    } else if (batch.status === 'review_ready') {
+      footer = `
+        <div class="fushenglu-action-stack">
+          <button type="button" class="fushenglu-primary-button" data-action="confirm-batch" data-batch-id="${escapeHtml(batch.batchId)}">最後確認提交</button>
+          <button type="button" class="fushenglu-danger-button" data-action="cancel-batch" data-batch-id="${escapeHtml(batch.batchId)}">取消整個批次</button>
+        </div>
+      `;
+    } else if (!['complete'].includes(batch.status)) {
+      footer = `
+        <button type="button" class="fushenglu-primary-button" data-action="resume-batch" data-batch-id="${escapeHtml(batch.batchId)}">繼續完成</button>
+      `;
+    }
+
+    screen.innerHTML = `
+      <section class="fushenglu-section-heading">
+        <div>
+          <p>${batch.source === 'correction' ? '修改預覽' : '本輪變化預覽'}</p>
+          <h2>${statusLabel(batch.status)}</h2>
+        </div>
+        <span class="fushenglu-badge">${escapeHtml(batch.batchId.slice(-8))}</span>
+      </section>
+      ${
+        batch.failureMessage
+          ? `<aside class="fushenglu-notice" data-kind="error">${escapeHtml(batch.failureMessage)}</aside>`
+          : ''
+      }
+      <section class="fushenglu-card">
+        <h2>玩家暫存操作</h2>
+        <ul class="fushenglu-review-list">${actions || '<li class="fushenglu-muted">無</li>'}</ul>
+      </section>
+      <section class="fushenglu-card">
+        <h2>聊天辨識變化</h2>
+        ${changes || '<p class="fushenglu-muted">沒有候選變化。</p>'}
+      </section>
+      <section class="fushenglu-card">
+        <h2>不確定事項</h2>
+        ${uncertain || '<p class="fushenglu-muted">沒有不確定事項。</p>'}
+      </section>
+      <section class="fushenglu-card">
+        <h2>下一輪交接</h2>
+        ${batch.handoffDrafts.map((draft) => renderHandoffDraft(draft, batch)).join('') || '<p class="fushenglu-muted">沒有交接候選。</p>'}
+      </section>
+      <section class="fushenglu-management-only fushenglu-card">
+        <h2>來源訊息</h2>
+        <ul class="fushenglu-source-list">
+          ${batch.inputMessages
+            .map(
+              (message) => `
+                <li>
+                  <strong>${escapeHtml(message.role)}</strong>
+                  <span>${escapeHtml(message.messageRef)}</span>
+                  <p>${escapeHtml(message.content)}</p>
+                </li>
+              `,
+            )
+            .join('') || '<li>自然語言修正沒有主聊天來源。</li>'}
+        </ul>
+      </section>
+      <div class="fushenglu-sticky-action">${footer}</div>
+    `;
+  }
+
+  function renderPending() {
+    const screen = elements.screens.get('pending');
+    const items = state?.pendingItems ?? [];
+    screen.innerHTML = `
+      <section class="fushenglu-section-heading">
+        <div><p>保留歷史</p><h2>待確認</h2></div>
+        <span class="fushenglu-badge">${items.filter((item) => item.status === 'pending').length}</span>
+      </section>
+      ${
+        items
+          .map(
+            (item) => `
+              <article class="fushenglu-card" data-pending-id="${escapeHtml(item.pendingId)}">
+                <div class="fushenglu-change-head">
+                  <h2>${escapeHtml(pendingLabel(item.kind))}</h2>
+                  <span class="fushenglu-badge">${escapeHtml(item.status)}</span>
+                </div>
+                <textarea class="fushenglu-textarea" data-pending-edit>${escapeHtml(safeJson(item.proposal.value))}</textarea>
+                <div class="fushenglu-actions fushenglu-actions-four">
+                  <button type="button" data-action="resolve-pending" data-decision="accepted" data-pending-id="${escapeHtml(item.pendingId)}">同意</button>
+                  <button type="button" data-action="resolve-pending" data-decision="rejected" data-pending-id="${escapeHtml(item.pendingId)}">拒絕</button>
+                  <button type="button" data-action="resolve-pending" data-decision="edited" data-pending-id="${escapeHtml(item.pendingId)}">修改</button>
+                  <button type="button" data-action="resolve-pending" data-decision="deferred" data-pending-id="${escapeHtml(item.pendingId)}">稍後</button>
+                </div>
+                <dl class="fushenglu-management-only fushenglu-meta">
+                  <div><dt>來源批次</dt><dd>${escapeHtml(item.batchId)}</dd></div>
+                  <div><dt>歷史筆數</dt><dd>${item.decisionHistory.length}</dd></div>
+                </dl>
+              </article>
+            `,
+          )
+          .join('') || '<section class="fushenglu-empty"><h2>目前沒有待確認項目</h2></section>'
+      }
+    `;
+  }
+
+  function renderHandoff() {
+    const screen = elements.screens.get('handoff');
+    const items = state?.handoffItems ?? [];
+    screen.innerHTML = `
+      <section class="fushenglu-section-heading">
+        <div><p>只含已確認內容</p><h2>主聊天交接</h2></div>
+      </section>
+      ${
+        items
+          .map(
+            (item) => `
+              <article class="fushenglu-card" data-handoff-id="${escapeHtml(item.handoffId)}">
+                <label class="fushenglu-check">
+                  <input type="checkbox" data-handoff-active ${item.active ? 'checked' : ''} />
+                  <span>${item.active ? '正在提供' : '已停用'}</span>
+                </label>
+                <textarea class="fushenglu-textarea" data-handoff-text>${escapeHtml(item.text)}</textarea>
+                <select data-handoff-mode>
+                  <option value="until_changed" ${item.mode === 'until_changed' ? 'selected' : ''}>直到改變</option>
+                  <option value="next_generation" ${item.mode === 'next_generation' ? 'selected' : ''}>只提供下一輪</option>
+                  <option value="never" ${item.mode === 'never' ? 'selected' : ''}>不提供</option>
+                </select>
+                <button type="button" class="fushenglu-small-button" data-action="save-handoff" data-handoff-id="${escapeHtml(item.handoffId)}">儲存</button>
+                <dl class="fushenglu-management-only fushenglu-meta">
+                  <div><dt>來源事件</dt><dd>${escapeHtml(item.sourceEventIds.join('、') || '無')}</dd></div>
+                  <div><dt>狀態類型</dt><dd>${escapeHtml(item.stateType)}</dd></div>
+                  <div><dt>消耗時間</dt><dd>${escapeHtml(item.consumedAt ?? '尚未')}</dd></div>
+                </dl>
+              </article>
+            `,
+          )
+          .join('') || '<section class="fushenglu-empty"><h2>尚無交接項目</h2></section>'
+      }
+    `;
+  }
+
+  function renderHistory() {
+    const screen = elements.screens.get('history');
+    const batches = [...(state?.batches ?? [])].reverse();
+    const canUndo = batches.some(
+      (batch) =>
+        state.committedBatchIds.includes(batch.batchId) &&
+        batch.revertedByBatchId === null &&
+        batch.committedEventIds.length > 0,
+    );
+    screen.innerHTML = `
+      <section class="fushenglu-section-heading">
+        <div><p>事件與來源</p><h2>批次歷史</h2></div>
+        <button type="button" data-action="undo-latest" ${canUndo ? '' : 'disabled'}>撤銷最近批次</button>
+      </section>
+      ${
+        batches
+          .map(
+            (batch) => `
+              <details class="fushenglu-history-item">
+                <summary>
+                  <span>${escapeHtml(new Date(batch.createdAt).toLocaleString('zh-Hant'))}</span>
+                  <strong>${escapeHtml(statusLabel(batch.status))}</strong>
+                </summary>
+                <dl class="fushenglu-meta fushenglu-meta-visible">
+                  <div><dt>batchId</dt><dd>${escapeHtml(batch.batchId)}</dd></div>
+                  <div><dt>來源訊息</dt><dd>${escapeHtml(batch.sourceMessageRefs.join('、') || '無')}</dd></div>
+                  <div><dt>接受</dt><dd>${escapeHtml(batch.acceptedProposalIds.join('、') || '無')}</dd></div>
+                  <div><dt>拒絕</dt><dd>${escapeHtml(batch.rejectedProposalIds.join('、') || '無')}</dd></div>
+                  <div><dt>交接</dt><dd>${state.handoffItems.filter((item) => item.batchId === batch.batchId).length}</dd></div>
+                  <div><dt>撤銷</dt><dd>${escapeHtml(batch.revertedByBatchId ?? '否')}</dd></div>
+                </dl>
+              </details>
+            `,
+          )
+          .join('') || '<section class="fushenglu-empty"><h2>尚無歷史</h2></section>'
+      }
+    `;
+  }
+
+  function renderApi() {
+    const screen = elements.screens.get('api');
+    let settings;
+    let settingsError = null;
+
+    try {
+      settings = settingsStore.load();
+    } catch (error) {
+      settingsError = error instanceof Error ? error.message : String(error);
+      settings = {
+        baseUrl: '',
+        apiKey: '',
+        analysisModel: '',
+        generationModel: '',
+        validationModel: '',
+        temperature: 0.2,
+        maxOutputTokens: 1200,
+      };
+    }
+
+    screen.innerHTML = `
+      <section class="fushenglu-section-heading">
+        <div><p>與主聊天完全分離</p><h2>API 設定</h2></div>
+      </section>
+      ${settingsError ? `<aside class="fushenglu-notice" data-kind="error">${escapeHtml(settingsError)}</aside>` : ''}
+      <form class="fushenglu-card fushenglu-api-form" data-api-form>
+        <label class="fushenglu-label">API Base URL
+          <input class="fushenglu-input" name="baseUrl" inputmode="url" value="${escapeHtml(settings.baseUrl)}" placeholder="https://api.example.com/v1" />
+        </label>
+        <label class="fushenglu-label">API Key
+          <span class="fushenglu-key-row">
+            <input class="fushenglu-input" name="apiKey" type="password" autocomplete="new-password" placeholder="${escapeHtml(maskApiKey(settings.apiKey) || '輸入新 Key')}" />
+            <button type="button" data-action="toggle-key">顯示</button>
+            <button type="button" data-action="clear-key">清除</button>
+          </span>
+        </label>
+        <p class="fushenglu-help">已保存的 Key 不會放入 DOM；顯示按鈕只切換本次新輸入。</p>
+        <label class="fushenglu-label">劇情分析模型
+          <input class="fushenglu-input" name="analysisModel" value="${escapeHtml(settings.analysisModel)}" />
+        </label>
+        <label class="fushenglu-label">生成／問答模型
+          <input class="fushenglu-input" name="generationModel" value="${escapeHtml(settings.generationModel)}" />
+        </label>
+        <label class="fushenglu-label">校驗模型
+          <input class="fushenglu-input" name="validationModel" value="${escapeHtml(settings.validationModel)}" />
+        </label>
+        <div class="fushenglu-two-columns">
+          <label class="fushenglu-label">Temperature
+            <input class="fushenglu-input" name="temperature" type="number" min="0" max="2" step="0.05" value="${escapeHtml(settings.temperature)}" />
+          </label>
+          <label class="fushenglu-label">最大輸出 Tokens
+            <input class="fushenglu-input" name="maxOutputTokens" type="number" min="1" max="131072" step="1" value="${escapeHtml(settings.maxOutputTokens)}" />
+          </label>
+        </div>
+        <div class="fushenglu-actions">
+          <button type="button" class="fushenglu-primary-button" data-action="save-api">儲存</button>
+          <button type="button" data-action="test-api">測試連線</button>
+        </div>
+      </form>
+    `;
+  }
+
+  function renderAll() {
+    if (!state) {
+      return;
+    }
+
+    renderHome();
+    renderReview();
+    renderPending();
+    renderHandoff();
+    renderHistory();
+    renderApi();
+    showScreen(currentScreen);
+  }
+
+  async function refresh(successMessage = '已讀取目前聊天') {
+    const capabilities = store.inspectCapabilities();
+
+    if (!capabilities.ok) {
+      state = null;
+      chatId = null;
+      setStatus(`缺少必要公開接口：${capabilities.missing.join('、')}`, 'error');
+      return;
+    }
+
+    try {
+      const result = await store.read();
+      state = result.state;
+      chatId = result.chatId;
+      liveMessageCapability = normalizeChatMessages(result.messages);
+      renderAll();
+      const handoffNote = capabilities.handoff.ok
+        ? ''
+        : `；交接受限：${capabilities.handoff.missing.join('、')}`;
+      setStatus(`${successMessage}${handoffNote}`, capabilities.handoff.ok ? 'success' : 'warning');
+    } catch (error) {
+      chatId = null;
+      setStatus(
+        error instanceof NoActiveChatError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : String(error),
+        'error',
+      );
+    }
+  }
+
+  async function runMutation(operation, successMessage) {
+    if (busy) {
+      return null;
+    }
+
+    setBusy(true);
+    setStatus('處理中…');
+
+    try {
+      const result = await operation();
+      await refresh(successMessage);
+      return result;
+    } catch (error) {
+      try {
+        await refresh('已保留目前進度');
+      } catch {
+        // 原錯誤仍是主要提示；下次開啟會再次從 metadata 恢復。
+      }
+
+      setStatus(error instanceof Error ? error.message : String(error), 'error');
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function analyzeBatch(batchId, correction = false) {
+    const snapshot = await store.read();
+    const batch = getBatch(snapshot.state, batchId);
+
+    if (!batch) {
+      throw new Error('分析批次遺失');
+    }
+
+    try {
+      const analysis = correction
+        ? await apiClient.parseCorrection(batch.correctionText, { batchId })
+        : await apiClient.analyzeMessages(
+            batch.inputMessages.map(({ messageRef, role, content }) => ({
+              messageRef,
+              role,
+              content,
+            })),
+            { batchId },
+          );
+      await store.update((current) =>
+        completeBatchAnalysis(current, batchId, analysis, now()),
+      );
+    } catch (error) {
+      await store.update((current) =>
+        failBatch(current, batchId, 'analysis', error, now()),
+      );
+      throw error;
+    }
+  }
+
+  async function endTurn() {
+    const batchId = makeId('batch');
+    await store.update((current, context) =>
+      beginTurnBatch(current, context.messages, {
+        batchId,
+        timestamp: now(),
+      }).state,
+    );
+    currentScreen = 'review';
+    await analyzeBatch(batchId);
+  }
+
+  async function analyzeCorrection(text) {
+    if (!text.trim()) {
+      throw new Error('請先輸入修正內容');
+    }
+
+    const batchId = makeId('batch');
+    await store.update((current) =>
+      beginTurnBatch(current, [], {
+        batchId,
+        timestamp: now(),
+        source: 'correction',
+        correctionText: text.trim(),
+      }).state,
+    );
+    currentScreen = 'review';
+    await analyzeBatch(batchId, true);
+  }
+
+  async function finishCommit(batchId, startFromReview = true) {
+    if (startFromReview) {
+      await store.update((current) => startBatchCommit(current, batchId, now()));
+    }
+
+    let snapshot = await store.read();
+    let batch = getBatch(snapshot.state, batchId);
+
+    if (batch.status === 'committing') {
+      try {
+        await store.update((current) =>
+          commitBatch(current, batchId, { timestamp: now() }),
+        );
+      } catch (error) {
+        await store.update((current) =>
+          failBatch(current, batchId, 'commit', error, now()),
+        );
+        throw error;
+      }
+    }
+
+    snapshot = await store.read();
+    batch = getBatch(snapshot.state, batchId);
+
+    if (batch.status === 'committed') {
+      try {
+        await store.update((current) =>
+          prepareBatchHandoff(current, batchId, { timestamp: now() }),
+        );
+      } catch (error) {
+        await store.update((current) =>
+          failBatch(current, batchId, 'handoff', error, now()),
+        );
+        throw error;
+      }
+    }
+
+    snapshot = await store.read();
+    batch = getBatch(snapshot.state, batchId);
+
+    if (batch.status === 'handoff_pending') {
+      await store.update((current) => completeBatch(current, batchId, now()));
+    }
+  }
+
+  async function resumeBatch(batchId) {
+    let snapshot = await store.read();
+    let batch = getBatch(snapshot.state, batchId);
+
+    if (batch.status === 'failed') {
+      await store.update((current) => retryBatch(current, batchId, now()));
+      snapshot = await store.read();
+      batch = getBatch(snapshot.state, batchId);
+    }
+
+    if (batch.status === 'analysis_pending') {
+      return analyzeBatch(batchId, batch.source === 'correction');
+    }
+
+    return finishCommit(batchId, false);
+  }
+
+  function readApiForm() {
+    const form = root.querySelector('[data-api-form]');
+
+    if (!form) {
+      throw new Error('找不到 API 設定表單');
+    }
+
+    const data = new FormData(form);
+    const existing = settingsStore.load();
+    const newKey = String(data.get('apiKey') ?? '');
+    return {
+      ...existing,
+      baseUrl: String(data.get('baseUrl') ?? ''),
+      apiKey: newKey || existing.apiKey,
+      analysisModel: String(data.get('analysisModel') ?? ''),
+      generationModel: String(data.get('generationModel') ?? ''),
+      validationModel: String(data.get('validationModel') ?? ''),
+      temperature: Number(data.get('temperature')),
+      maxOutputTokens: Number(data.get('maxOutputTokens')),
+    };
+  }
+
+  async function handleAction(action, target) {
+    if (action === 'close') {
+      setOpen(false);
+      return;
+    }
+
+    if (action === 'toggle-mode') {
+      const management = root.dataset.mode !== 'management';
+      root.dataset.mode = management ? 'management' : 'immersive';
+      elements.modeButton.textContent = management ? '沉浸' : '管理';
+      elements.modeButton.setAttribute('aria-pressed', String(management));
+      return;
+    }
+
+    if (action === 'add-test-action') {
+      const input = root.querySelector('#fushenglu-test-action');
+      await runMutation(
+        () =>
+          store.update((current) =>
+            addDraftAction(current, createDraftTestAction(input.value), now()),
+          ),
+        '已暫存測試操作',
+      );
+      return;
+    }
+
+    if (action === 'end-turn') {
+      await runMutation(endTurn, '分析完成，請最後確認');
+      return;
+    }
+
+    if (action === 'analyze-correction') {
+      const text = root.querySelector('#fushenglu-correction')?.value ?? '';
+      await runMutation(() => analyzeCorrection(text), '修正已轉成修改預覽');
+      return;
+    }
+
+    if (action === 'toggle-proposal') {
+      await runMutation(
+        () =>
+          store.update((current) =>
+            updateBatchProposal(
+              current,
+              target.dataset.batchId,
+              target.dataset.proposalId,
+              { reviewDisposition: target.checked ? 'apply' : 'reject' },
+              now(),
+            ),
+          ),
+        '已更新候選',
+      );
+      return;
+    }
+
+    if (action === 'proposal-disposition') {
+      await runMutation(
+        () =>
+          store.update((current) =>
+            updateBatchProposal(
+              current,
+              target.dataset.batchId,
+              target.dataset.proposalId,
+              { reviewDisposition: target.value },
+              now(),
+            ),
+          ),
+        '已更新候選去向',
+      );
+      return;
+    }
+
+    if (action === 'save-proposal') {
+      const card = target.closest('[data-proposal]');
+      await runMutation(
+        () =>
+          store.update((current) =>
+            updateBatchProposal(
+              current,
+              target.dataset.batchId,
+              target.dataset.proposalId,
+              {
+                operation: card.querySelector('[data-proposal-operation]').value,
+                value: parseEditedValue(
+                  card.querySelector('[data-proposal-value]').value,
+                ),
+              },
+              now(),
+            ),
+          ),
+        '已儲存候選修改',
+      );
+      return;
+    }
+
+    if (
+      ['handoff-draft-active', 'handoff-draft-mode', 'save-handoff-draft'].includes(
+        action,
+      )
+    ) {
+      const card = target.closest('.fushenglu-change');
+      const batchId = target.dataset.batchId;
+      const draftId = target.dataset.draftId;
+      const updates =
+        action === 'handoff-draft-active'
+          ? { active: target.checked }
+          : action === 'handoff-draft-mode'
+            ? { mode: target.value }
+            : {
+                text: card.querySelector('[data-handoff-draft-text]').value,
+                mode: card.querySelector('[data-action="handoff-draft-mode"]').value,
+                active: card.querySelector('[data-action="handoff-draft-active"]').checked,
+              };
+      await runMutation(
+        () =>
+          store.update((current) =>
+            updateBatchHandoffDraft(current, batchId, draftId, updates, now()),
+          ),
+        '已儲存交接預覽',
+      );
+      return;
+    }
+
+    if (action === 'confirm-batch') {
+      await runMutation(
+        () => finishCommit(target.dataset.batchId),
+        '批次已提交並完成交接準備',
+      );
+      return;
+    }
+
+    if (action === 'cancel-batch') {
+      await runMutation(
+        () =>
+          store.update((current) =>
+            cancelBatch(current, target.dataset.batchId, now()),
+          ),
+        '本輪已取消並保留歷史',
+      );
+      return;
+    }
+
+    if (action === 'certain-only') {
+      await runMutation(async () => {
+        await store.update((current) =>
+          recoverCertainActionsOnly(current, target.dataset.batchId, now()),
+        );
+        await finishCommit(target.dataset.batchId);
+      }, '只提交了插件內確定操作');
+      return;
+    }
+
+    if (action === 'retry-batch' || action === 'resume-batch') {
+      await runMutation(
+        () => resumeBatch(target.dataset.batchId),
+        '批次已安全續作',
+      );
+      return;
+    }
+
+    if (action === 'resolve-pending') {
+      const card = target.closest('[data-pending-id]');
+      const decision = target.dataset.decision;
+      const editedProposal =
+        decision === 'edited'
+          ? {
+              value: parseEditedValue(card.querySelector('[data-pending-edit]').value),
+            }
+          : null;
+      await runMutation(
+        () =>
+          store.update((current) =>
+            resolvePendingItem(current, target.dataset.pendingId, decision, {
+              batchId: makeId('batch'),
+              editedProposal,
+              timestamp: now(),
+            }),
+          ),
+        '待確認項目已處理並保留歷史',
+      );
+      return;
+    }
+
+    if (action === 'save-handoff') {
+      const card = target.closest('[data-handoff-id]');
+      await runMutation(
+        () =>
+          store.update((current) =>
+            updateHandoffItem(
+              current,
+              target.dataset.handoffId,
+              {
+                text: card.querySelector('[data-handoff-text]').value,
+                mode: card.querySelector('[data-handoff-mode]').value,
+                active: card.querySelector('[data-handoff-active]').checked,
+              },
+              now(),
+            ),
+          ),
+        '交接項目已更新',
+      );
+      return;
+    }
+
+    if (action === 'undo-latest') {
+      await runMutation(
+        () =>
+          store.update((current) =>
+            undoLatestCommittedBatch(current, {
+              batchId: makeId('batch'),
+              timestamp: now(),
+            }),
+          ),
+        '最近批次已軟撤銷',
+      );
+      return;
+    }
+
+    if (action === 'toggle-key') {
+      const input = root.querySelector('[name="apiKey"]');
+      input.type = input.type === 'password' ? 'text' : 'password';
+      target.textContent = input.type === 'password' ? '顯示' : '隱藏';
+      return;
+    }
+
+    if (action === 'clear-key') {
+      await runMutation(async () => {
+        settingsStore.clearApiKey();
+      }, 'API Key 已清除');
+      return;
+    }
+
+    if (action === 'save-api') {
+      await runMutation(async () => {
+        settingsStore.save(readApiForm());
+      }, '插件 API 設定已儲存');
+      return;
+    }
+
+    if (action === 'test-api') {
+      await runMutation(async () => {
+        settingsStore.save(readApiForm());
+        const result = await apiClient.testConnection();
+        setStatus(`連線成功：${result.model}`, 'success');
+      }, 'API 連線成功');
+    }
+  }
 
   function setOpen(open) {
     elements.fullscreen.hidden = !open;
@@ -117,85 +1123,50 @@ export function mountFushengluApp({
 
     if (open) {
       lastFocusedElement = documentRef.activeElement;
-      elements.close.focus();
+      root.querySelector('[data-action="close"]').focus();
       void refresh('已重新讀取目前聊天');
-    } else if (lastFocusedElement instanceof HTMLElement) {
-      lastFocusedElement.focus();
-    }
-  }
+    } else {
+      const ElementClass = documentRef.defaultView?.HTMLElement;
 
-  async function refresh(successMessage = '已讀取目前聊天') {
-    const capabilities = store.inspectCapabilities();
-
-    if (!capabilities.ok) {
-      elements.chatId.textContent = '無法取得';
-      setControlsDisabled(elements, true);
-      setStatus(
-        elements,
-        `缺少必要公開接口：${capabilities.missing.join('、')}`,
-        'error',
-      );
-      return;
-    }
-
-    try {
-      const result = await store.read();
-      elements.chatId.textContent = result.chatId;
-      elements.sampleInput.value = result.state.sampleValue ?? '';
-      setControlsDisabled(elements, false);
-
-      const suffix =
-        result.state.sampleValue === null
-          ? '目前沒有示例值'
-          : `示例值：${result.state.sampleValue}`;
-      const migration = result.migrated ? `；已由 V${result.fromVersion} 遷移` : '';
-      setStatus(elements, `${successMessage}；${suffix}${migration}`, 'success');
-    } catch (error) {
-      elements.chatId.textContent =
-        error instanceof NoActiveChatError ? '尚未選擇聊天' : '讀取失敗';
-      setControlsDisabled(elements, true);
-      setStatus(elements, error instanceof Error ? error.message : String(error), 'error');
-    }
-  }
-
-  async function runStorageAction(action) {
-    if (busy) {
-      return;
-    }
-
-    busy = true;
-    setControlsDisabled(elements, true);
-    setStatus(elements, '處理中…');
-
-    try {
-      if (action === 'write') {
-        const result = await store.writeSample(elements.sampleInput.value);
-        elements.chatId.textContent = result.chatId;
-        setStatus(elements, '已寫入目前聊天', 'success');
-      } else if (action === 'clear') {
-        const result = await store.clearSample();
-        elements.chatId.textContent = result.chatId;
-        elements.sampleInput.value = '';
-        setStatus(elements, '已清空目前聊天的示例值', 'success');
-      } else {
-        await refresh();
+      if (ElementClass && lastFocusedElement instanceof ElementClass) {
+        lastFocusedElement.focus();
       }
-    } catch (error) {
-      setStatus(elements, error instanceof Error ? error.message : String(error), 'error');
-    } finally {
-      busy = false;
-      const capabilities = store.inspectCapabilities();
-      setControlsDisabled(elements, !capabilities.ok);
     }
   }
 
   elements.entry.addEventListener('click', () => setOpen(true));
-  elements.close.addEventListener('click', () => setOpen(false));
-  elements.fullscreen.addEventListener('click', (event) => {
-    const action = event.target.closest?.('[data-action]')?.dataset.action;
+  root.addEventListener('click', (event) => {
+    const nav = event.target.closest?.('[data-nav]');
 
-    if (action) {
-      void runStorageAction(action);
+    if (nav) {
+      showScreen(nav.dataset.nav);
+      return;
+    }
+
+    const target = event.target.closest?.('[data-action]');
+
+    if (target) {
+      if (
+        [
+          'toggle-proposal',
+          'proposal-disposition',
+          'handoff-draft-active',
+          'handoff-draft-mode',
+        ].includes(target.dataset.action)
+      ) {
+        return;
+      }
+
+      void handleAction(target.dataset.action, target);
+    }
+  });
+  root.addEventListener('change', (event) => {
+    const target = event.target.closest?.(
+      '[data-action="toggle-proposal"], [data-action="proposal-disposition"], [data-action="handoff-draft-active"], [data-action="handoff-draft-mode"]',
+    );
+
+    if (target) {
+      void handleAction(target.dataset.action, target);
     }
   });
 
@@ -204,12 +1175,14 @@ export function mountFushengluApp({
       setOpen(false);
     }
   };
-
   documentRef.addEventListener('keydown', handleKeydown);
 
   try {
     unsubscribe = store.subscribeToChatChanges(() => {
-      elements.sampleInput.value = '';
+      state = null;
+      chatId = null;
+      liveMessageCapability = null;
+      currentScreen = 'home';
       void refresh('聊天已切換');
     });
   } catch {

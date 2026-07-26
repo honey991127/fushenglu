@@ -1,68 +1,87 @@
 # 驗收測試
 
-## 第一階段：擴充骨架
+## 第二階段：獨立 API
 
-- `manifest.json` 可由 TauriTavern／SillyTavern third-party UI extension 載入。
-- 執行時不需要 Node-only server plugin；Node 只出現在開發、測試與建置命令。
-- 畫面只有「浮生錄」入口、可關閉的手機全屏頁、聊天識別與儲存測試控制。
-- 全屏頁預設採沉浸式顯示並處理 iPhone safe-area。
-- 插件不查找或依賴宿主私有 DOM。
-- 缺少必要公開接口時顯示明確錯誤，且儲存按鈕不可執行。
-- 第一階段不得出現商店、技能、衣櫥、活動、排名、評價或書信玩法。
+- API 設定包含 Base URL、Key、三模型槽位、Temperature 與最大輸出 Tokens。
+- 三個模型槽位可填同一模型。
+- 重新打開設定頁只顯示 API Key 遮蔽尾碼，不把已保存 Key 放入 input value。
+- 顯示／隱藏只作用於本次新輸入；清除 Key 後連線不再帶 Authorization。
+- 匯出設定與逐聊天匯出都沒有完整 API Key；日誌沒有完整 Key。
+- 測試連線使用插件設定，不讀取或修改主聊天連線。
+- 支援標準 `/chat/completions`。
+- structured output 不支援時可降級，但普通 JSON 仍須本地 Schema 完整通過。
+- API、HTTP、JSON 或 Schema 失敗後，原聊天狀態和原批次輸入仍存在。
 
-## 第一階段：逐聊天儲存
+## 每輪邊界
 
-- 新狀態包含 `schemaVersion: 1`。
-- 可在目前聊天寫入、讀取與清空示例值。
-- 聊天 A 寫入的示例值在聊天 B 不可見，回到聊天 A 後仍可讀取。
-- 收到 `CHAT_CHANGED` 後畫面重新取得 context 與目前聊天識別，不沿用舊 `chatMetadata` 參照。
-- 無版本或 V0 原型資料可遷移至 V1 並持久化。
-- 未知未來版本或損壞資料不得被靜默覆寫。
-- App 重開後示例值仍由聊天 metadata 恢復。
+- 記錄 `lastSuccessfulIndex`、已處理訊息槽與忽略訊息槽。
+- 只抽取未處理的 user／assistant；system 訊息不進分析。
+- 穩定 message ID 優先，Swipe ID 與內容指紋保留在證據引用。
+- 同一訊息編輯、刪除後重排或 Swipe 替代不得重複套用已提交變化。
+- 無穩定 ID 時顯示指紋或位置降級限制。
+- `timelineContext` 為 memory、quote、dream、unknown 的時間候選預設進待確認。
+- 沒有插件操作時仍可按「結束本輪」。
+- 聊天切換後 UI 重新取得 context，不沿用舊 metadata 參照。
 
-## 後續核心流程
+## 批次狀態與失敗
 
-- 同一 `batchId` 重試不得扣款兩次。
-- 購買、換裝、寄信與活動報名在最後確認前只屬本輪暫存操作。
-- 按「結束本輪」才建立唯一 `batchId` 並開始分析。
-- 分析完成後狀態為 `review_ready`，且正式帳本尚未改變。
-- 預覽同時列出玩家操作、聊天變化、待確認事項與主聊天交接。
-- 明確小型變化預設勾選，但只在玩家最後確認後寫入。
-- 含糊、衝突或重大變化進待確認。
-- 合法批次狀態只有 `draft`、`analysis_pending`、`review_ready`、`committing`、`committed`、`handoff_pending`、`complete`、`failed`。
-- API 中斷後重開可從安全階段繼續。
-- API 失敗時可沿用相同 `batchId` 重試、只提交確定操作或取消。
-- 重複點擊與 App 重開不得重複扣款、增加物品、寄信或報名。
-- 無插件操作時仍可結束本輪並分析聊天。
-- 確定交易的規則判定不依賴 AI，但仍須玩家最後確認才提交。
-- 切換聊天後資料完全隔離。
-- Swipe 重抽不得重複提交。
-- 回憶日期不得推進主時間線。
+- 合法狀態只有 `draft`、`analysis_pending`、`review_ready`、`committing`、`committed`、
+  `handoff_pending`、`complete`、`failed`。
+- 按「結束本輪」建立一次唯一 `batchId`；App 重開與重試沿用該值。
+- `analysis_pending` 前只凍結測試操作和訊息，不改正式測試狀態。
+- `review_ready` 可勾選、取消、編輯或移待確認，仍未正式寫入。
+- 最後確認才進 `committing`；同一 `batchId` 重複提交只有一份事件和記錄。
+- 提交成功後依次記錄 `committed`、`handoff_pending`、`complete`。
+- 失敗保留 `failurePhase`、錯誤摘要、輸入與進度。
+- 分析失敗提供同批重新分析、只提交確定測試操作及取消本輪。
+- App 重開可顯示並續作 `analysis_pending`、`review_ready`、`committing`、
+  `committed`、`handoff_pending` 或 `failed` 批次。
 
-## 衣櫥與物品
+## 分析與預覽
 
-- 明確獲贈衣物在預覽中預設勾選，玩家最後確認後加入。
-- 試穿不加入。
-- 贈送／借用含糊時進待確認。
-- 主聊天再次提及已購買物品不得重複增加。
+- 分析包含九類 changes、`uncertainItems` 與 `evidence`。
+- 每個候選包含 proposalId、kind、operation、value、confidence、證據引用、reason、
+  severity、dedupeKey。
+- 明確、minor 且 confidence 至少 0.8 的候選預設勾選。
+- 人物、地點、重大／關鍵變化、新技能／突破、非主線時間與低信心候選預設待確認。
+- 任一候選 Schema 不合法時整份分析失敗，沒有部分套用。
+- 沉浸模式隱藏信心、理由、去重鍵和來源；管理模式顯示。
+- 預覽同時顯示暫存操作、聊天候選、不確定事項與交接草稿。
 
-## 活動、排名、評價
+## 待確認與修正
 
-- 報名不等於參與或完成。
-- 不符合資格不可報名。
-- 未參加演武顯示未參賽／未入榜。
-- 考核前不得生成考核排名。
-- 評價必須有來源；技能數值上升不得自動生成稱讚。
+- 待確認頁支援故事時間、貨幣與物品、衣物所有權、人物、地點、技能、修煉、評價、
+  資料衝突與其他。
+- 同意、拒絕、修改、稍後處理都新增 decision history，不永久刪除項目。
+- 拒絕與稍後處理不新增正式測試記錄。
+- 自然語言修正先呼叫生成／問答模型形成 `review_ready` 修改預覽。
+- 玩家最後確認前，修正不得建立正式事件或修改測試狀態。
 
-## 書信與問答
+## 主聊天交接
 
-- 草稿不屬於正式事件。
-- 寄信操作在最後確認並原子提交後，才扣郵費及建立運送事件。
-- 未到送達時間不可標記已送達。
-- 問答助手內容不得進主聊天交接。
+- 交接頁可編輯文字、停用、改模式與查看來源事件。
+- 注入只含已確認的 `HandoffItem`；不含待確認、分析理由、問答助手或完整資料庫。
+- 注入提示主聊天保持一致，不要求主動重述已完成操作。
+- `next_generation` 在生成失敗、取消、Swipe 或重抽時不消耗。
+- `next_generation` 只有 assistant 回覆成功 `saveChat()` 後消耗。
+- `until_changed` 被同 `stateType` 新項目取代。
+- `never` 不注入。
 
-## 回滾
+## 歷史與撤銷
 
-- 回滾購買恢復貨幣和庫存。
-- 明確依賴可提示級聯撤銷。
-- 可能相關不得自動刪除。
+- 批次詳情顯示時間、狀態、來源訊息、接受／拒絕候選與交接數量。
+- 撤銷最近一個有正式測試事件的批次。
+- 事件、測試記錄與該批交接採 `deletedAt` 軟刪除。
+- 原批次保存 `revertedByBatchId`，撤銷本身也有唯一 `batchId`。
+- 第二階段不測試正式貨幣、庫存、衣櫥或複雜業務級聯。
+
+## 手機與建置
+
+- 預設沉浸模式；可切到管理模式。
+- 首頁、本輪、待確認、交接、歷史、API 頁面可在 iPhone 寬度操作。
+- header、底部 nav 與內容使用 safe area。
+- 內容底部 padding 足以避開固定 nav；sticky 確認按鈕不遮住最後一項。
+- input 使用 16px，鍵盤彈出時內容仍可捲動到目前欄位。
+- `npm run verify` 通過。
+- 正式 `src/` JavaScript 建置清單完整且不含 `node:`、`require()` 或 `process.env`。
+- 第三階段前不得出現正式商店、技能、修煉、衣櫥、書信、活動、排名或評價玩法。
