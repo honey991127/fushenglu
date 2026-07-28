@@ -288,18 +288,52 @@ test('structured output 不支援時降級為 JSON 解析與本地 Schema 驗證
   assert.equal(Object.hasOwn(calls[1], 'response_format'), false);
 });
 
-test('不合法 AI JSON 會拒絕整份分析', async () => {
+test('缺少空欄位的 AI JSON 會安全正規化', async () => {
+  let calls = 0;
   const client = new OpenAICompatibleClient({
     settingsStore: settingsStore(),
     logger: { warn() {}, error() {}, info() {} },
-    fetchImpl: async () =>
-      response(200, {
+    fetchImpl: async () => {
+      calls += 1;
+      return response(200, {
         choices: [{ message: { content: '{"inventoryChanges":[]}' } }],
-      }),
+      });
+    },
+  });
+
+  const analyzed = await client.analyzeMessages([], {
+    batchId: 'batch-incomplete-but-safe',
+  });
+
+  assert.deepEqual(analyzed, createEmptyAnalysisResult());
+  assert.equal(calls, 1);
+});
+
+test('第一次與修復結果都不合法時仍會拒絕整份分析', async () => {
+  let calls = 0;
+  const client = new OpenAICompatibleClient({
+    settingsStore: settingsStore(),
+    logger: { warn() {}, error() {}, info() {} },
+    fetchImpl: async () => {
+      calls += 1;
+      return response(200, {
+        choices: [
+          {
+            message: {
+              content:
+                calls === 1
+                  ? '{"message":"done"}'
+                  : '{"message":"still invalid"}',
+            },
+          },
+        ],
+      });
+    },
   });
 
   await assert.rejects(
-    client.analyzeMessages([], { batchId: 'batch-invalid' }),
+    client.analyzeMessages([], { batchId: 'batch-invalid-after-repair' }),
     /不符合 Schema/,
   );
+  assert.equal(calls, 2);
 });

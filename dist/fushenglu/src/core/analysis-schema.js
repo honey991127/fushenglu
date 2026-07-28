@@ -247,6 +247,88 @@ export function createEmptyAnalysisResult() {
   };
 }
 
+export function normalizeAnalysisResultShape(value) {
+  if (!isPlainObject(value)) {
+    return value;
+  }
+
+  const knownKeys = new Set([
+    'schemaVersion',
+    'schema_version',
+    'version',
+    ...ANALYSIS_CHANGE_BUCKETS,
+    'story_time_changes',
+    'inventory_changes',
+    'currency_changes',
+    'wardrobe_changes',
+    'skill_changes',
+    'cultivation_changes',
+    'person_changes',
+    'place_changes',
+    'evaluation_changes',
+    'uncertainItems',
+    'uncertain_items',
+    'evidence',
+    'evidences',
+  ]);
+  const hasKnownKey = Object.keys(value).some((key) => knownKeys.has(key));
+  const wrapperKey = ['analysis', 'result', 'data', 'output'].find(
+    (key) => !hasKnownKey && isPlainObject(value[key]),
+  );
+  const source = wrapperKey ? value[wrapperKey] : value;
+  const aliases = {
+    storyTimeChanges: ['story_time_changes'],
+    inventoryChanges: ['inventory_changes'],
+    currencyChanges: ['currency_changes'],
+    wardrobeChanges: ['wardrobe_changes'],
+    skillChanges: ['skill_changes'],
+    cultivationChanges: ['cultivation_changes'],
+    personChanges: ['person_changes'],
+    placeChanges: ['place_changes'],
+    evaluationChanges: ['evaluation_changes'],
+    uncertainItems: ['uncertain_items'],
+    evidence: ['evidences'],
+  };
+  const recognized = Object.keys(source).some((key) => knownKeys.has(key));
+
+  if (!recognized && Object.keys(source).length > 0) {
+    return value;
+  }
+
+  const normalized = {
+    ...source,
+    schemaVersion:
+      source.schemaVersion ?? source.schema_version ?? source.version ?? ANALYSIS_SCHEMA_VERSION,
+  };
+
+  for (const bucket of ANALYSIS_CHANGE_BUCKETS) {
+    const alias = aliases[bucket]?.find((key) => Object.hasOwn(source, key));
+    normalized[bucket] = source[bucket] ?? (alias ? source[alias] : []);
+  }
+
+  const uncertainAlias = aliases.uncertainItems.find((key) =>
+    Object.hasOwn(source, key),
+  );
+  normalized.uncertainItems =
+    source.uncertainItems ?? (uncertainAlias ? source[uncertainAlias] : []);
+
+  const evidenceAlias = aliases.evidence.find((key) =>
+    Object.hasOwn(source, key),
+  );
+  normalized.evidence =
+    source.evidence ?? (evidenceAlias ? source[evidenceAlias] : []);
+
+  delete normalized.schema_version;
+  delete normalized.version;
+  for (const aliasList of Object.values(aliases)) {
+    for (const alias of aliasList) {
+      delete normalized[alias];
+    }
+  }
+
+  return normalized;
+}
+
 export function validateAnalysisResult(value) {
   const issues = [];
 
@@ -376,7 +458,9 @@ export function parseJsonObject(content) {
 }
 
 export function parseAndValidateAnalysis(content) {
-  return assertAnalysisResult(parseJsonObject(content));
+  return assertAnalysisResult(
+    normalizeAnalysisResultShape(parseJsonObject(content)),
+  );
 }
 
 export function validateValidationResult(value) {

@@ -1,4 +1,5 @@
 import {
+  AnalysisSchemaError,
   STORY_ANALYSIS_JSON_SCHEMA,
   VALIDATION_RESULT_JSON_SCHEMA,
   parseAndValidateAnalysis,
@@ -343,12 +344,37 @@ function safeErrorSummary(payload, status) {
   return { message, code };
 }
 
+const ANALYSIS_OUTPUT_TEMPLATE = {
+  schemaVersion: 1,
+  storyTimeChanges: [],
+  inventoryChanges: [],
+  currencyChanges: [],
+  wardrobeChanges: [],
+  skillChanges: [],
+  cultivationChanges: [],
+  personChanges: [],
+  placeChanges: [],
+  evaluationChanges: [],
+  uncertainItems: [],
+  evidence: [],
+};
+
 const ANALYSIS_SYSTEM_PROMPT = `
-你是浮生錄插件的劇情分析器。你只輸出符合指定 JSON Schema 的候選變化，不得直接修改資料。
-只分析輸入中的 user／assistant 新訊息。回憶、引用、傳聞、假設和夢境中的時間不可當作主時間線；
+你是浮生錄插件的劇情分析器。你只輸出一個 JSON 物件，不得直接修改資料，不得輸出 Markdown。
+最外層必須完整包含以下 12 個鍵，鍵名及大小寫不可改變，也不可省略：
+${JSON.stringify(ANALYSIS_OUTPUT_TEMPLATE)}
+即使某類沒有變化，仍必須保留該鍵並填入空陣列。
+只分析輸入中的 user／assistant 訊息。回憶、引用、傳聞、假設和夢境中的時間不可當作主時間線；
 story_time 必須填 timelineContext。明確小型變化可標 minor；衝突、突破、新技能、新人物、
 新地點或所有權含糊者必須標 major/critical 並放 uncertainItems。每項證據必須引用輸入的 messageRef。
-dedupeKey 必須可重現且代表同一事實。沒有變化時回傳所有空陣列。不得輸出 Markdown。
+dedupeKey 必須可重現且代表同一事實。沒有變化時原樣回傳上述空模板。
+`.trim();
+
+const ANALYSIS_REPAIR_SYSTEM_PROMPT = `
+上一個分析輸出沒有符合浮生錄 Schema。請把它修正為單一 JSON 物件，不得補充說明或 Markdown。
+最外層必須完整包含以下 12 個鍵，鍵名及大小寫不可改變：
+${JSON.stringify(ANALYSIS_OUTPUT_TEMPLATE)}
+缺少的分類請填空陣列；保留原輸出中可確定且有證據的候選，不得虛構新內容。
 `.trim();
 
 const CORRECTION_SYSTEM_PROMPT = `
@@ -588,7 +614,36 @@ export class OpenAICompatibleClient {
       ],
       { jsonSchema: STORY_ANALYSIS_JSON_SCHEMA },
     );
-    const result = parseAndValidateAnalysis(content);
+    let result;
+
+    try {
+      result = parseAndValidateAnalysis(content);
+    } catch (error) {
+      if (!(error instanceof AnalysisSchemaError)) {
+        throw error;
+      }
+
+      const repairedContent = await this.request(
+        'analysis',
+        [
+          { role: 'system', content: ANALYSIS_REPAIR_SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              batchId,
+              invalidOutput: content,
+              requiredTemplate: ANALYSIS_OUTPUT_TEMPLATE,
+            }),
+          },
+        ],
+        {
+          jsonSchema: STORY_ANALYSIS_JSON_SCHEMA,
+          temperature: 0,
+        },
+      );
+      result = parseAndValidateAnalysis(repairedContent);
+    }
+
     const settings = this.settingsStore.load();
 
     if (settings.validationModel) {
