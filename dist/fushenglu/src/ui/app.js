@@ -279,6 +279,7 @@ export function mountFushengluApp({
   let chatId = null;
   let currentScreen = 'home';
   let busy = false;
+  let loadedModels = [];
   let liveMessageCapability = null;
   let lastFocusedElement = null;
   let unsubscribe = () => {};
@@ -606,7 +607,7 @@ export function mountFushengluApp({
         generationModel: '',
         validationModel: '',
         temperature: 0.2,
-        maxOutputTokens: 1200,
+        maxOutputTokens: 2048,
       };
     }
 
@@ -627,14 +628,22 @@ export function mountFushengluApp({
           </span>
         </label>
         <p class="fushenglu-help">已保存的 Key 不會放入 DOM；顯示按鈕只切換本次新輸入。</p>
+        <div class="fushenglu-actions">
+          <button type="button" data-action="load-models">載入模型</button>
+        </div>
+        <datalist id="fushenglu-model-options">
+          ${loadedModels
+            .map((model) => `<option value="${escapeHtml(model)}"></option>`)
+            .join('')}
+        </datalist>
         <label class="fushenglu-label">劇情分析模型
-          <input class="fushenglu-input" name="analysisModel" value="${escapeHtml(settings.analysisModel)}" />
+          <input class="fushenglu-input" name="analysisModel" list="fushenglu-model-options" value="${escapeHtml(settings.analysisModel)}" />
         </label>
         <label class="fushenglu-label">生成／問答模型
-          <input class="fushenglu-input" name="generationModel" value="${escapeHtml(settings.generationModel)}" />
+          <input class="fushenglu-input" name="generationModel" list="fushenglu-model-options" value="${escapeHtml(settings.generationModel)}" />
         </label>
         <label class="fushenglu-label">校驗模型
-          <input class="fushenglu-input" name="validationModel" value="${escapeHtml(settings.validationModel)}" />
+          <input class="fushenglu-input" name="validationModel" list="fushenglu-model-options" value="${escapeHtml(settings.validationModel)}" />
         </label>
         <div class="fushenglu-two-columns">
           <label class="fushenglu-label">Temperature
@@ -865,8 +874,55 @@ export function mountFushengluApp({
       generationModel: String(data.get('generationModel') ?? ''),
       validationModel: String(data.get('validationModel') ?? ''),
       temperature: Number(data.get('temperature')),
-      maxOutputTokens: Number(data.get('maxOutputTokens')),
+      maxOutputTokens: String(data.get('maxOutputTokens') ?? ''),
     };
+  }
+
+  function readApiConnectionForm() {
+    const form = root.querySelector('[data-api-form]');
+
+    if (!form) {
+      throw new Error('找不到 API 設定表單');
+    }
+
+    const data = new FormData(form);
+    const existing = settingsStore.load();
+    const newKey = String(data.get('apiKey') ?? '');
+    return {
+      baseUrl: String(data.get('baseUrl') ?? ''),
+      apiKey: newKey || existing.apiKey,
+    };
+  }
+
+  async function loadModelsFromForm() {
+    if (busy) {
+      return;
+    }
+
+    setBusy(true);
+    setStatus('正在載入模型…');
+
+    try {
+      loadedModels = await apiClient.loadModels(readApiConnectionForm());
+      const options = root.querySelector('#fushenglu-model-options');
+
+      if (options) {
+        options.innerHTML = loadedModels
+          .map((model) => `<option value="${escapeHtml(model)}"></option>`)
+          .join('');
+      }
+
+      setStatus(
+        loadedModels.length > 0
+          ? `已載入 ${loadedModels.length} 個模型`
+          : 'API 未提供可用模型，仍可手動輸入',
+        loadedModels.length > 0 ? 'success' : 'warning',
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error), 'error');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleAction(action, target) {
@@ -1104,6 +1160,11 @@ export function mountFushengluApp({
       await runMutation(async () => {
         settingsStore.save(readApiForm());
       }, '插件 API 設定已儲存');
+      return;
+    }
+
+    if (action === 'load-models') {
+      await loadModelsFromForm();
       return;
     }
 

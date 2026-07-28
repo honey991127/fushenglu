@@ -17,7 +17,7 @@ export const DEFAULT_API_SETTINGS = Object.freeze({
   generationModel: '',
   validationModel: '',
   temperature: 0.2,
-  maxOutputTokens: 1200,
+  maxOutputTokens: 2048,
 });
 
 export class ApiSettingsError extends Error {
@@ -58,18 +58,20 @@ export function normalizeApiSettings(raw = {}) {
   }
 
   const temperature = Number(raw.temperature ?? DEFAULT_API_SETTINGS.temperature);
-  const maxOutputTokens = Number(
-    raw.maxOutputTokens ?? DEFAULT_API_SETTINGS.maxOutputTokens,
-  );
+  const rawValue =
+    raw.maxOutputTokens ?? DEFAULT_API_SETTINGS.maxOutputTokens;
+  const value = Number.parseInt(String(rawValue).trim(), 10);
+  const hasIntegerSyntax = /^[+-]?\d+$/.test(String(rawValue).trim());
 
   if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
     throw new ApiSettingsError('Temperature 必須介於 0 與 2');
   }
 
   if (
-    !Number.isInteger(maxOutputTokens) ||
-    maxOutputTokens < 1 ||
-    maxOutputTokens > 131072
+    !Number.isInteger(value) ||
+    !hasIntegerSyntax ||
+    value < 1 ||
+    value > 131072
   ) {
     throw new ApiSettingsError('最大輸出 Tokens 必須是 1 至 131072 的整數');
   }
@@ -98,7 +100,7 @@ export function normalizeApiSettings(raw = {}) {
     generationModel: normalizeString(raw.generationModel),
     validationModel: normalizeString(raw.validationModel),
     temperature,
-    maxOutputTokens,
+    maxOutputTokens: value,
   };
 }
 
@@ -240,6 +242,42 @@ export function createChatCompletionsUrl(baseUrl) {
   }
 
   return `${normalized}/chat/completions`;
+}
+
+export function createModelsUrl(baseUrl) {
+  const normalized = normalizeString(baseUrl).replace(/\/+$/, '');
+
+  if (!normalized) {
+    throw new ApiSettingsError('請先設定 API Base URL');
+  }
+
+  let parsed;
+
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    throw new ApiSettingsError('API Base URL 格式無效');
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new ApiSettingsError('API Base URL 只支援 HTTP 或 HTTPS');
+  }
+
+  return `${normalized}/models`;
+}
+
+export function parseModelList(payload) {
+  if (!payload || typeof payload !== 'object' || !Array.isArray(payload.data)) {
+    throw new ApiRequestError('模型清單格式無效');
+  }
+
+  return [
+    ...new Set(
+      payload.data
+        .map((item) => normalizeString(item?.id))
+        .filter(Boolean),
+    ),
+  ].sort();
 }
 
 function modelForSlot(settings, slot) {
@@ -430,11 +468,7 @@ export class OpenAICompatibleClient {
 
   async testConnection() {
     const settings = this.settingsStore.load();
-    const slot = settings.validationModel
-      ? 'validation'
-      : settings.generationModel
-        ? 'generation'
-        : 'analysis';
+    const slot = 'analysis';
     const content = await this.request(
       slot,
       [
@@ -454,6 +488,71 @@ export class OpenAICompatibleClient {
       model: modelForSlot(settings, slot),
       response: content.slice(0, 80),
     };
+  }
+
+  async loadModels(connection = null) {
+    const storedSettings = this.settingsStore.load();
+    const baseUrl =
+      connection && Object.hasOwn(connection, 'baseUrl')
+        ? connection.baseUrl
+        : storedSettings.baseUrl;
+    const apiKey =
+      connection && Object.hasOwn(connection, 'apiKey')
+        ? String(connection.apiKey ?? '').trim()
+        : storedSettings.apiKey;
+    const url = createModelsUrl(baseUrl);
+    let response;
+
+    try {
+      response = await this.fetchImpl(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+    } catch (error) {
+      this.logger.error('載入模型時無法連線至 API', {
+        url,
+        error: redactSensitive(
+          error instanceof Error ? error.message : String(error),
+          [apiKey],
+        ),
+      });
+      throw new ApiRequestError('無法連線以載入模型', { cause: error });
+    }
+
+    let payload;
+
+    try {
+      payload = await response.json();
+    } catch (error) {
+      if (!response.ok) {
+        throw new ApiRequestError(`載入模型失敗（HTTP ${response.status}）`, {
+          status: response.status,
+          cause: error,
+        });
+      }
+
+      throw new ApiRequestError('模型清單不是合法 JSON', {
+        status: response.status,
+        cause: error,
+      });
+    }
+
+    if (!response.ok) {
+      const summary = safeErrorSummary(payload, response.status);
+      const safeMessage = redactSensitive(summary.message, [apiKey]);
+      throw new ApiRequestError(
+        `載入模型失敗（HTTP ${response.status}）：${safeMessage}`,
+        {
+          status: response.status,
+          responseCode: summary.code,
+        },
+      );
+    }
+
+    return parseModelList(payload);
   }
 
   async analyzeMessages(messages, { batchId } = {}) {
