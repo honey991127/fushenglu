@@ -44,7 +44,7 @@ test('相容示例值寫入仍保留所有 V2 核心資料', () => {
   const written = setSampleValue(state, '聊天 A', NOW);
   const cleared = setSampleValue(written, null, NOW);
 
-  assert.equal(written.schemaVersion, 2);
+  assert.equal(written.schemaVersion, CHAT_STATE_SCHEMA_VERSION);
   assert.equal(written.legacy.sampleValue, '聊天 A');
   assert.deepEqual(written.committedBatchIds, ['batch_kept']);
   assert.equal(cleared.legacy.sampleValue, null);

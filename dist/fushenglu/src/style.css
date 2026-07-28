@@ -233,6 +233,65 @@
   padding: 17px;
 }
 
+.fushenglu-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.fushenglu-entry-grid button {
+  min-width: 0;
+  min-height: 76px;
+  border: 1px solid var(--fsl-border);
+  border-radius: 15px;
+  padding: 13px;
+  color: var(--fsl-text);
+  background: linear-gradient(145deg, rgba(123, 64, 51, 0.34), rgba(255, 255, 255, 0.05));
+  text-align: left;
+  touch-action: manipulation;
+}
+
+.fushenglu-entry-grid strong,
+.fushenglu-entry-grid span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.fushenglu-entry-grid strong {
+  color: #f0d6a2;
+  font: 600 17px/1.35 ui-serif, "Songti TC", "Noto Serif TC", serif;
+}
+
+.fushenglu-entry-grid span {
+  margin-top: 3px;
+  color: var(--fsl-muted);
+  font-size: 12px;
+}
+
+.fushenglu-overview-list {
+  margin: 0;
+}
+
+.fushenglu-overview-list div {
+  display: grid;
+  grid-template-columns: 98px minmax(0, 1fr);
+  gap: 9px;
+  padding: 9px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.fushenglu-overview-list dt {
+  color: var(--fsl-gold);
+  font-size: 13px;
+}
+
+.fushenglu-overview-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .fushenglu-card h2,
 .fushenglu-empty h2 {
   margin: 0 0 12px;
@@ -629,6 +688,12 @@
   color: #a99d91;
   background: transparent;
   font-size: 11px;
+}
+
+.fushenglu-entry-grid button,
+.fushenglu-actions button,
+.fushenglu-secondary-button {
+  min-height: 44px;
 }
 
 .fushenglu-nav button[aria-current="page"] {

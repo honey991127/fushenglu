@@ -19,6 +19,7 @@ test('所有正式前端 JavaScript 都在建置清單且不含 Node-only runtim
       'src/core/analysis-schema.js',
       'src/core/api-client.js',
       'src/core/chat-state.js',
+      'src/core/character-state.js',
       'src/core/turn-sync.js',
       'src/index.js',
       'src/integrations/tauritavern.js',

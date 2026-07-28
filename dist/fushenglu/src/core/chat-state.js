@@ -1,4 +1,10 @@
-export const CHAT_STATE_SCHEMA_VERSION = 2;
+import {
+  CHARACTER_STATE_SCHEMA_VERSION,
+  createCharacterState,
+  rebuildCharacterState,
+} from './character-state.js';
+
+export const CHAT_STATE_SCHEMA_VERSION = 3;
 
 const BATCH_STATUSES = new Set([
   'draft',
@@ -96,6 +102,7 @@ export function createChatState(timestamp = new Date().toISOString()) {
     pendingItems: [],
     handoffItems: [],
     committedBatchIds: [],
+    character: createCharacterState(),
     testState: createTestState(),
     legacy: createLegacyState(),
   };
@@ -231,7 +238,7 @@ function normalizeV2(rawState) {
   }
 
   return {
-    schemaVersion: CHAT_STATE_SCHEMA_VERSION,
+    schemaVersion: 2,
     updatedAt: requireOptionalTimestamp(rawState.updatedAt ?? null, 'updatedAt'),
     draftActions: requireVersionedEntities(
       requireArray(rawState.draftActions, 'draftActions'),
@@ -254,6 +261,32 @@ function normalizeV2(rawState) {
     committedBatchIds,
     testState: normalizeTestState(rawState.testState),
     legacy: normalizeLegacyState(rawState.legacy),
+  };
+}
+
+function normalizeV3(rawState) {
+  const normalized = normalizeV2(rawState);
+
+  if (!rawState.character || rawState.character.schemaVersion !== CHARACTER_STATE_SCHEMA_VERSION) {
+    throw new ChatStateMigrationError('character.schemaVersion must be 1');
+  }
+
+  const rebuiltCharacter = rebuildCharacterState(normalized.events);
+
+  return {
+    ...normalized,
+    schemaVersion: CHAT_STATE_SCHEMA_VERSION,
+    character: rebuiltCharacter,
+  };
+}
+
+function migrateV2State(rawState) {
+  const normalized = normalizeV2(rawState);
+
+  return {
+    ...normalized,
+    schemaVersion: CHAT_STATE_SCHEMA_VERSION,
+    character: rebuildCharacterState(normalized.events),
   };
 }
 
@@ -300,6 +333,15 @@ export function migrateChatState(rawState, timestamp = new Date().toISOString())
     );
   }
 
+  if (sourceVersion === 2) {
+    return {
+      state: migrateV2State(rawState),
+      created: false,
+      migrated: true,
+      fromVersion: sourceVersion,
+    };
+  }
+
   if (sourceVersion < CHAT_STATE_SCHEMA_VERSION) {
     return {
       state: migrateLegacyState(rawState, sourceVersion, timestamp),
@@ -310,7 +352,7 @@ export function migrateChatState(rawState, timestamp = new Date().toISOString())
   }
 
   return {
-    state: normalizeV2(rawState),
+    state: normalizeV3(rawState),
     created: false,
     migrated: false,
     fromVersion: CHAT_STATE_SCHEMA_VERSION,

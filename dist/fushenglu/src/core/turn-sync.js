@@ -3,6 +3,10 @@ import {
   assertAnalysisResult,
   createEmptyAnalysisResult,
 } from './analysis-schema.js';
+import {
+  actionRequiresPending,
+  rebuildCharacterState,
+} from './character-state.js';
 
 export const BATCH_STATUSES = Object.freeze([
   'draft',
@@ -489,15 +493,24 @@ function handoffTextFor(proposal) {
   return `${proposal.kind} 狀態：${value}`;
 }
 
-function handoffDraftFor(item) {
+function handoffEligible(item) {
+  return (
+    ['currency', 'inventory', 'cultivation'].includes(item.kind) ||
+    (item.kind === 'wardrobe' && item.operation === 'wear') ||
+    (item.kind === 'other' && item.operation === 'set_status')
+  );
+}
+
+function handoffDraftFor(item, source = 'proposal') {
   return {
     schemaVersion: 1,
-    draftId: `handoff_${item.proposalId}`,
+    draftId: `handoff_${item.proposalId ?? item.actionId}`,
     text: handoffTextFor(item),
     mode: 'next_generation',
     stateType: item.kind,
-    sourceProposalIds: [item.proposalId],
-    active: item.reviewDisposition === 'apply',
+    sourceProposalIds: source === 'proposal' ? [item.proposalId] : [],
+    sourceActionIds: source === 'action' ? [item.actionId] : [],
+    active: handoffEligible(item) && (item.reviewDisposition ?? 'apply') === 'apply',
   };
 }
 
@@ -520,7 +533,10 @@ export function completeBatchAnalysis(
   const uncertainItems = analysis.uncertainItems.map((proposal) =>
     createReviewItem(proposal, 'uncertainItems', true),
   );
-  const handoffDrafts = [...detectedChanges, ...uncertainItems].map(handoffDraftFor);
+  const handoffDrafts = [
+    ...[...detectedChanges, ...uncertainItems].map((item) => handoffDraftFor(item)),
+    ...batch.draftActions.map((action) => handoffDraftFor(action, 'action')),
+  ];
   const ready = transitionBatch(
     {
       ...batch,
@@ -616,6 +632,10 @@ export function recoverCertainActionsOnly(
 }
 
 function validateEditedProposal(item) {
+  if (item.actionId) {
+    return;
+  }
+
   const analysis = createEmptyAnalysisResult();
   const proposal = Object.fromEntries(
     Object.entries(item).filter(
@@ -909,6 +929,13 @@ export function commitBatch(
       continue;
     }
 
+    if (actionRequiresPending(state, action)) {
+      const pendingId = createId('pending');
+      newPending.push(pendingFromProposal(batch, action, pendingId, timestamp));
+      pendingItemIds.push(pendingId);
+      continue;
+    }
+
     const event = sourceEvent(
       batch,
       action,
@@ -973,8 +1000,13 @@ export function commitBatch(
     },
     committed,
   );
-
-  return stateWithTimestamp(next, timestamp);
+  return stateWithTimestamp(
+    {
+      ...next,
+      character: rebuildCharacterState(next.events),
+    },
+    timestamp,
+  );
 }
 
 export function prepareBatchHandoff(
@@ -1000,15 +1032,27 @@ export function prepareBatchHandoff(
       .filter((event) => event.batchId === batchId && event.sourceProposalId)
       .map((event) => [event.sourceProposalId, event.eventId]),
   );
+  const eventByAction = new Map(
+    state.events
+      .filter((event) => event.batchId === batchId && event.sourceActionId)
+      .map((event) => [event.sourceActionId, event.eventId]),
+  );
   const confirmed = new Set(batch.acceptedProposalIds);
   const handoffItems = clone(state.handoffItems);
 
   for (const draft of batch.handoffDrafts) {
-    const sourceProposalIds = draft.sourceProposalIds.filter((proposalId) =>
+    const sourceProposalIds = (draft.sourceProposalIds ?? []).filter((proposalId) =>
       confirmed.has(proposalId),
     );
+    const sourceActionIds = (draft.sourceActionIds ?? []).filter((actionId) =>
+      eventByAction.has(actionId),
+    );
 
-    if (!draft.active || draft.mode === 'never' || sourceProposalIds.length === 0) {
+    if (
+      !draft.active ||
+      draft.mode === 'never' ||
+      sourceProposalIds.length + sourceActionIds.length === 0
+    ) {
       continue;
     }
 
@@ -1023,6 +1067,7 @@ export function prepareBatchHandoff(
       active: Boolean(draft.text.trim()),
       sourceEventIds: sourceProposalIds
         .map((proposalId) => eventByProposal.get(proposalId))
+        .concat(sourceActionIds.map((actionId) => eventByAction.get(actionId)))
         .filter(Boolean),
       lastInjectedGenerationId: null,
       consumedAt: null,
@@ -1211,8 +1256,11 @@ function resolutionBatch(batchId, pending, decision, timestamp) {
     status: 'complete',
     statusHistory: [
       statusEntry('draft', timestamp),
+      statusEntry('analysis_pending', timestamp),
+      statusEntry('review_ready', timestamp),
       statusEntry('committing', timestamp),
       statusEntry('committed', timestamp),
+      statusEntry('handoff_pending', timestamp),
       statusEntry('complete', timestamp),
     ],
     createdAt: timestamp,
@@ -1317,7 +1365,13 @@ export function resolvePendingItem(
 
   next.batches.push(resolution);
   next.committedBatchIds.push(batchId);
-  return stateWithTimestamp(next, timestamp);
+  return stateWithTimestamp(
+    {
+      ...next,
+      character: rebuildCharacterState(next.events),
+    },
+    timestamp,
+  );
 }
 
 export function undoLatestCommittedBatch(
@@ -1408,6 +1462,7 @@ export function undoLatestCommittedBatch(
   });
   next.committedBatchIds.push(batchId);
   next.testState.updatedAt = timestamp;
+  next.character = rebuildCharacterState(next.events);
   return stateWithTimestamp(next, timestamp);
 }
 

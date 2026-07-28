@@ -6,6 +6,7 @@ export const buildConfig = Object.freeze({
     'src/index.js',
     'src/style.css',
     'src/core/chat-state.js',
+    'src/core/character-state.js',
     'src/core/analysis-schema.js',
     'src/core/api-client.js',
     'src/core/turn-sync.js',

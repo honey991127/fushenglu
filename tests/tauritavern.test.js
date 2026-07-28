@@ -162,7 +162,7 @@ test('第一階段示例資料遷移後仍只影響目前聊天', async () => {
 
   const result = await store.read();
   assert.equal(result.migrated, true);
-  assert.equal(result.state.schemaVersion, 2);
+  assert.equal(result.state.schemaVersion, 3);
   assert.equal(result.state.legacy.sampleValue, '舊原型');
 
   fake.switchChat('chat-b');

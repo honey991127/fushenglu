@@ -1,4 +1,6 @@
 import { maskApiKey } from '../core/api-client.js';
+import { createEmptyAnalysisResult } from '../core/analysis-schema.js';
+import { createCharacterAction } from '../core/character-state.js';
 import {
   addDraftAction,
   beginTurnBatch,
@@ -106,6 +108,10 @@ function createMarkup(documentRef) {
         <section class="fushenglu-screen" data-screen="handoff" hidden></section>
         <section class="fushenglu-screen" data-screen="history" hidden></section>
         <section class="fushenglu-screen" data-screen="api" hidden></section>
+        <section class="fushenglu-screen" data-screen="inventory" hidden></section>
+        <section class="fushenglu-screen" data-screen="wardrobe" hidden></section>
+        <section class="fushenglu-screen" data-screen="skills" hidden></section>
+        <section class="fushenglu-screen" data-screen="cultivation" hidden></section>
       </main>
       <nav class="fushenglu-nav" aria-label="浮生錄頁面">
         <button type="button" data-nav="home" aria-current="page">首頁</button>
@@ -366,6 +372,88 @@ export function mountFushengluApp({
         <button type="button" class="fushenglu-primary-button" data-action="end-turn">結束本輪</button>
       </div>
     `;
+  }
+
+  function characterOverviewMarkup() {
+    const character = state?.character;
+    const currentOutfit = character?.wardrobe?.currentOutfit;
+    const currencies = character?.inventory?.currencies ?? [];
+    const change = character?.story?.lastConfirmedChange;
+    const statuses = character?.story?.ongoingStatuses ?? [];
+    const valueOrEmpty = (value) => escapeHtml(value || '尚未記錄');
+
+    return `
+      <section class="fushenglu-card fushenglu-character-overview">
+        <h2>角色概覽</h2>
+        <dl class="fushenglu-overview-list">
+          <div><dt>故事時間</dt><dd>${valueOrEmpty(character?.story?.time)}</dd></div>
+          <div><dt>當前地點</dt><dd>${valueOrEmpty(character?.story?.place)}</dd></div>
+          <div><dt>當前穿著</dt><dd>${valueOrEmpty(currentOutfit?.name || currentOutfit?.garmentNames?.join('、'))}</dd></div>
+          <div><dt>貨幣</dt><dd>${valueOrEmpty(currencies.map((item) => `${item.name} ${item.amount}`).join('、'))}</dd></div>
+          <div><dt>傷勢／持續狀態</dt><dd>${valueOrEmpty(statuses.join('、'))}</dd></div>
+          <div><dt>最近確認變化</dt><dd>${valueOrEmpty(change ? `${change.kind} · ${change.operation}` : null)}</dd></div>
+        </dl>
+      </section>
+      <section class="fushenglu-entry-grid" aria-label="角色狀態入口">
+        <button type="button" data-action="open-screen" data-screen="inventory"><strong>行囊</strong><span>物品與貨幣</span></button>
+        <button type="button" data-action="open-screen" data-screen="wardrobe"><strong>衣櫥</strong><span>衣物與穿搭</span></button>
+        <button type="button" data-action="open-screen" data-screen="skills"><strong>技能</strong><span>熟練度與來源</span></button>
+        <button type="button" data-action="open-screen" data-screen="cultivation"><strong>修煉</strong><span>里程碑與突破</span></button>
+      </section>
+    `;
+  }
+
+  function renderCharacterOverview() {
+    const screen = elements.screens.get('home');
+    screen.insertAdjacentHTML('afterbegin', characterOverviewMarkup());
+  }
+
+  function renderInventory() {
+    const screen = elements.screens.get('inventory');
+    const inventory = state?.character?.inventory;
+    const currencies = inventory?.currencies ?? [];
+    const items = inventory?.items ?? [];
+    screen.innerHTML = `
+      <section class="fushenglu-section-heading"><div><p>已確認資料</p><h2>行囊</h2></div><button type="button" data-action="open-screen" data-screen="home">返回首頁</button></section>
+      <section class="fushenglu-card"><h2>貨幣</h2><ul class="fushenglu-plain-list">${currencies.map((item) => `<li>${escapeHtml(item.name)}：${escapeHtml(item.amount)}</li>`).join('') || '<li class="fushenglu-muted">尚未記錄</li>'}</ul>
+        <div class="fushenglu-inline-form"><input class="fushenglu-input" data-currency-name placeholder="貨幣名稱（靈石不分品級）" /><input class="fushenglu-input" data-currency-amount type="number" min="0" placeholder="數值" /></div>
+        <div class="fushenglu-actions"><button type="button" data-action="queue-currency" data-operation="add">增加</button><button type="button" data-action="queue-currency" data-operation="subtract">減少</button><button type="button" data-action="queue-currency" data-operation="set">設定數量</button></div>
+      </section>
+      <section class="fushenglu-card"><h2>物品</h2><ul class="fushenglu-plain-list">${items.map((item) => `<li><strong>${escapeHtml(item.name)}</strong> × ${escapeHtml(item.quantity)}<br><span class="fushenglu-muted">${escapeHtml(item.category)}${item.source ? ` · ${escapeHtml(item.source)}` : ''}</span></li>`).join('') || '<li class="fushenglu-muted">尚未記錄</li>'}</ul>
+        <label class="fushenglu-label">名稱<input class="fushenglu-input" data-item-name /></label><div class="fushenglu-two-columns"><label class="fushenglu-label">數量<input class="fushenglu-input" data-item-quantity type="number" min="0" /></label><label class="fushenglu-label">分類<input class="fushenglu-input" data-item-category /></label></div><label class="fushenglu-label">來源說明<input class="fushenglu-input" data-item-source /></label>
+        <div class="fushenglu-actions"><button type="button" data-action="queue-item" data-operation="add">增加</button><button type="button" data-action="queue-item" data-operation="subtract">減少</button><button type="button" data-action="queue-item" data-operation="set">設定數量</button></div>
+      </section>`;
+  }
+
+  function renderWardrobe() {
+    const screen = elements.screens.get('wardrobe');
+    const wardrobe = state?.character?.wardrobe;
+    const garments = wardrobe?.garments ?? [];
+    const outfit = wardrobe?.currentOutfit;
+    screen.innerHTML = `
+      <section class="fushenglu-section-heading"><div><p>已確認資料</p><h2>衣櫥</h2></div><button type="button" data-action="open-screen" data-screen="home">返回首頁</button></section>
+      <section class="fushenglu-card"><h2>當前穿著</h2><p>${escapeHtml(outfit?.name || outfit?.garmentNames?.join('、') || '尚未記錄')}</p><label class="fushenglu-label">衣物名稱（以逗號分隔）<input class="fushenglu-input" data-outfit-garments placeholder="只可選明確擁有的衣物" /></label><label class="fushenglu-label">穿搭名稱（可留空）<input class="fushenglu-input" data-outfit-name /></label><div class="fushenglu-actions"><button type="button" class="fushenglu-primary-button" data-action="queue-wear">確認換裝預覽</button><button type="button" data-action="queue-save-outfit">保存穿搭</button></div></section>
+      <section class="fushenglu-card"><h2>衣物資料庫</h2><ul class="fushenglu-plain-list">${garments.map((item) => `<li><strong>${escapeHtml(item.name)}</strong> · ${escapeHtml(item.part)}<br><span class="fushenglu-muted">${escapeHtml(item.ownershipStatus)}${item.description ? ` · ${escapeHtml(item.description)}` : ''}</span></li>`).join('') || '<li class="fushenglu-muted">尚未記錄</li>'}</ul><label class="fushenglu-label">名稱<input class="fushenglu-input" data-garment-name /></label><div class="fushenglu-two-columns"><label class="fushenglu-label">部位<input class="fushenglu-input" data-garment-part /></label><label class="fushenglu-label">所有權<select data-garment-ownership><option value="owned">明確擁有</option><option value="gifted">贈送</option><option value="borrowed">借用</option><option value="temporary">暫穿</option><option value="unknown">不明</option></select></label></div><label class="fushenglu-label">描述<input class="fushenglu-input" data-garment-description /></label><label class="fushenglu-label">取得來源<input class="fushenglu-input" data-garment-source /></label><button type="button" class="fushenglu-secondary-button" data-action="queue-garment">加入變化預覽</button></section>`;
+  }
+
+  function renderSkills() {
+    const screen = elements.screens.get('skills');
+    const skills = state?.character?.skills?.entries ?? [];
+    screen.innerHTML = `
+      <section class="fushenglu-section-heading"><div><p>純數值熟練度</p><h2>技能</h2></div><button type="button" data-action="open-screen" data-screen="home">返回首頁</button></section>
+      <section class="fushenglu-card"><ul class="fushenglu-plain-list">${skills.map((item) => `<li><strong>${escapeHtml(item.name)}</strong> · ${escapeHtml(item.category)}：${escapeHtml(item.proficiency)}<br><span class="fushenglu-muted">來源：${escapeHtml(item.sourceEvent?.source || '尚未記錄')}；最近變化：${escapeHtml(item.recentChange?.operation || '尚未記錄')}</span></li>`).join('') || '<li class="fushenglu-muted">尚未記錄</li>'}</ul><label class="fushenglu-label">名稱<input class="fushenglu-input" data-skill-name /></label><div class="fushenglu-two-columns"><label class="fushenglu-label">分類<input class="fushenglu-input" data-skill-category /></label><label class="fushenglu-label">熟練度／增加值<input class="fushenglu-input" data-skill-value type="number" min="0" /></label></div><label class="fushenglu-label">來源事件<input class="fushenglu-input" data-skill-source /></label><div class="fushenglu-actions"><button type="button" data-action="queue-skill" data-operation="add">增加</button><button type="button" data-action="queue-skill" data-operation="set">設定數值</button></div></section>`;
+  }
+
+  function renderCultivation() {
+    const screen = elements.screens.get('cultivation');
+    const cultivation = state?.character?.cultivation;
+    const current = cultivation?.current;
+    const milestones = cultivation?.milestones ?? [];
+    const breakthroughs = cultivation?.breakthroughs ?? [];
+    screen.innerHTML = `
+      <section class="fushenglu-section-heading"><div><p>與技能分開記錄</p><h2>修煉</h2></div><button type="button" data-action="open-screen" data-screen="home">返回首頁</button></section>
+      <section class="fushenglu-card"><h2>當前進度</h2><p>${escapeHtml(current ? `${current.stage}${current.progressDescription ? `：${current.progressDescription}` : ''}` : '尚未記錄')}</p><label class="fushenglu-label">境界或階段名稱<input class="fushenglu-input" data-cultivation-stage /></label><label class="fushenglu-label">當前進度描述<input class="fushenglu-input" data-cultivation-progress /></label><label class="fushenglu-label">里程碑名稱<input class="fushenglu-input" data-cultivation-milestone /></label><div class="fushenglu-actions"><button type="button" data-action="queue-cultivation" data-operation="confirm_milestone">確認里程碑預覽</button><button type="button" data-action="queue-cultivation" data-operation="record_breakthrough">突破預覽</button></div></section>
+      <section class="fushenglu-card"><h2>已確認里程碑</h2><ul class="fushenglu-plain-list">${milestones.map((item) => `<li>${escapeHtml(item.name)} · ${escapeHtml(item.stage)}</li>`).join('') || '<li class="fushenglu-muted">尚未記錄</li>'}</ul><h2>突破記錄</h2><ul class="fushenglu-plain-list">${breakthroughs.map((item) => `<li>${escapeHtml(item.stage)} · ${escapeHtml(item.confirmedAt)}</li>`).join('') || '<li class="fushenglu-muted">尚未記錄</li>'}</ul></section>`;
   }
 
   function reviewBatch() {
@@ -697,11 +785,16 @@ export function mountFushengluApp({
     }
 
     renderHome();
+    renderCharacterOverview();
     renderReview();
     renderPending();
     renderHandoff();
     renderHistory();
     renderApi();
+    renderInventory();
+    renderWardrobe();
+    renderSkills();
+    renderCultivation();
     showScreen(currentScreen);
   }
 
@@ -822,6 +915,29 @@ export function mountFushengluApp({
     );
     currentScreen = 'review';
     await analyzeBatch(batchId, true);
+  }
+
+  async function queueCharacterOperation(kind, operation, value) {
+    const batchId = makeId('batch');
+    const action = createCharacterAction({
+      actionId: makeId('action'),
+      kind,
+      operation,
+      value,
+      dedupeKey: `${kind}:${operation}:${JSON.stringify(value)}`,
+      timestamp: now(),
+    });
+
+    await store.update((current) => {
+      let next = addDraftAction(current, action, now());
+      next = beginTurnBatch(next, [], {
+        batchId,
+        timestamp: now(),
+        source: 'plugin_operation',
+      }).state;
+      return completeBatchAnalysis(next, batchId, createEmptyAnalysisResult(), now());
+    });
+    currentScreen = 'review';
   }
 
   async function finishCommit(batchId, startFromReview = true) {
@@ -1080,6 +1196,111 @@ export function mountFushengluApp({
       root.dataset.mode = management ? 'management' : 'immersive';
       elements.modeButton.textContent = management ? '沉浸' : '管理';
       elements.modeButton.setAttribute('aria-pressed', String(management));
+      return;
+    }
+
+    if (action === 'open-screen') {
+      showScreen(target.dataset.screen);
+      return;
+    }
+
+    if (action === 'queue-currency') {
+      await runMutation(
+        () =>
+          queueCharacterOperation('currency', target.dataset.operation, {
+            name: root.querySelector('[data-currency-name]').value,
+            amount: Number(root.querySelector('[data-currency-amount]').value),
+          }),
+        '貨幣變化已加入本輪預覽，請最後確認。',
+      );
+      return;
+    }
+
+    if (action === 'queue-item') {
+      await runMutation(
+        () =>
+          queueCharacterOperation('inventory', target.dataset.operation, {
+            name: root.querySelector('[data-item-name]').value,
+            quantity: Number(root.querySelector('[data-item-quantity]').value),
+            category: root.querySelector('[data-item-category]').value,
+            source: root.querySelector('[data-item-source]').value,
+          }),
+        '物品變化已加入本輪預覽，請最後確認。',
+      );
+      return;
+    }
+
+    if (action === 'queue-garment') {
+      await runMutation(
+        () =>
+          queueCharacterOperation('wardrobe', 'add', {
+            name: root.querySelector('[data-garment-name]').value,
+            part: root.querySelector('[data-garment-part]').value,
+            description: root.querySelector('[data-garment-description]').value,
+            source: root.querySelector('[data-garment-source]').value,
+            ownershipStatus: root.querySelector('[data-garment-ownership]').value,
+          }),
+        '衣物變化已加入本輪預覽；所有權不明會送往待確認。',
+      );
+      return;
+    }
+
+    if (action === 'queue-wear') {
+      await runMutation(
+        () =>
+          queueCharacterOperation('wardrobe', 'wear', {
+            name: root.querySelector('[data-outfit-name]').value,
+            garments: root
+              .querySelector('[data-outfit-garments]')
+              .value.split(',')
+              .map((item) => item.trim())
+              .filter(Boolean),
+          }),
+        '換裝已加入本輪預覽，請最後確認。',
+      );
+      return;
+    }
+
+    if (action === 'queue-save-outfit') {
+      await runMutation(
+        () =>
+          queueCharacterOperation('wardrobe', 'save_outfit', {
+            name: root.querySelector('[data-outfit-name]').value,
+            garments: root
+              .querySelector('[data-outfit-garments]')
+              .value.split(',')
+              .map((item) => item.trim())
+              .filter(Boolean),
+          }),
+        '穿搭保存已加入本輪預覽，請最後確認。',
+      );
+      return;
+    }
+
+    if (action === 'queue-skill') {
+      await runMutation(
+        () =>
+          queueCharacterOperation('skill', target.dataset.operation, {
+            name: root.querySelector('[data-skill-name]').value,
+            category: root.querySelector('[data-skill-category]').value,
+            proficiency: Number(root.querySelector('[data-skill-value]').value),
+            sourceEvent: root.querySelector('[data-skill-source]').value,
+          }),
+        '技能變化已加入本輪預覽；新技能或重大變化會送往待確認。',
+      );
+      return;
+    }
+
+    if (action === 'queue-cultivation') {
+      await runMutation(
+        () =>
+          queueCharacterOperation('cultivation', target.dataset.operation, {
+            stage: root.querySelector('[data-cultivation-stage]').value,
+            progressDescription: root.querySelector('[data-cultivation-progress]').value,
+            milestoneName: root.querySelector('[data-cultivation-milestone]').value,
+          }),
+        '修煉變化已加入待確認，確認後才會正式生效。',
+      );
       return;
     }
 
