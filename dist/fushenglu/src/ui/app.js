@@ -44,6 +44,54 @@ function safeJson(value) {
   }
 }
 
+function formatActionValue(action) {
+  const value = action?.value;
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return String(value ?? '');
+  }
+
+  const operationLabels = {
+    add: '增加',
+    subtract: '減少',
+    set: '設定為',
+    wear: '換上',
+    save_outfit: '保存穿搭',
+    confirm_milestone: '確認里程碑',
+    record_breakthrough: '記錄突破',
+  };
+  const operation = operationLabels[action.operation] ?? action.operation;
+
+  if (action.kind === 'currency') {
+    return `${value.name || value.currency || '未命名貨幣'}：${operation} ${value.amount ?? value.quantity ?? 0}`;
+  }
+
+  if (action.kind === 'inventory') {
+    return `${value.name || '未命名物品'}：${operation} ${value.quantity ?? value.amount ?? 0}`;
+  }
+
+  if (action.kind === 'wardrobe') {
+    const garments = Array.isArray(value.garments)
+      ? value.garments.map((item) => item?.name ?? item).filter(Boolean).join('、')
+      : value.name;
+    return `衣櫥：${operation}${garments ? ` ${garments}` : ''}`;
+  }
+
+  if (action.kind === 'skill') {
+    return `${value.name || '未命名技能'}：${operation} ${value.proficiency ?? value.value ?? 0}`;
+  }
+
+  if (action.kind === 'cultivation') {
+    return `修煉：${operation} ${value.stage || value.name || '未命名階段'}`;
+  }
+
+  return safeJson(value);
+}
+
 function parseEditedValue(value) {
   const text = String(value ?? '').trim();
 
@@ -359,7 +407,7 @@ export function mountFushengluApp({
         </div>
         <ul class="fushenglu-plain-list">
           ${(state?.draftActions ?? [])
-            .map((action) => `<li>${escapeHtml(action.value)}</li>`)
+            .map((action) => `<li>${escapeHtml(formatActionValue(action))}</li>`)
             .join('') || '<li class="fushenglu-muted">本輪沒有插件操作也可結束。</li>'}
         </ul>
       </section>
@@ -367,6 +415,11 @@ export function mountFushengluApp({
         <h2>自然語言修正</h2>
         <textarea id="fushenglu-correction" class="fushenglu-textarea" placeholder="我沒有收下那件披風"></textarea>
         <button type="button" class="fushenglu-secondary-button" data-action="analyze-correction">建立修改預覽</button>
+      </section>
+      <section class="fushenglu-card">
+        <h2>讀取既有聊天</h2>
+        <p class="fushenglu-help">重新分析目前聊天的既有樓層，只建立變化預覽；最後確認前不會寫入正式資料。長聊天可能消耗較多 API Tokens。</p>
+        <button type="button" class="fushenglu-secondary-button" data-action="scan-existing-chat">掃描既有聊天樓層</button>
       </section>
       <div class="fushenglu-sticky-action">
         <button type="button" class="fushenglu-primary-button" data-action="end-turn">結束本輪</button>
@@ -416,7 +469,7 @@ export function mountFushengluApp({
     screen.innerHTML = `
       <section class="fushenglu-section-heading"><div><p>已確認資料</p><h2>行囊</h2></div><button type="button" data-action="open-screen" data-screen="home">返回首頁</button></section>
       <section class="fushenglu-card"><h2>貨幣</h2><ul class="fushenglu-plain-list">${currencies.map((item) => `<li>${escapeHtml(item.name)}：${escapeHtml(item.amount)}</li>`).join('') || '<li class="fushenglu-muted">尚未記錄</li>'}</ul>
-        <div class="fushenglu-inline-form"><input class="fushenglu-input" data-currency-name placeholder="貨幣名稱（靈石不分品級）" /><input class="fushenglu-input" data-currency-amount type="number" min="0" placeholder="數值" /></div>
+        <div class="fushenglu-inline-form"><input class="fushenglu-input" data-currency-name value="靈石" placeholder="貨幣名稱（靈石不分品級）" /><input class="fushenglu-input" data-currency-amount type="number" min="0" placeholder="數值" /></div>
         <div class="fushenglu-actions"><button type="button" data-action="queue-currency" data-operation="add">增加</button><button type="button" data-action="queue-currency" data-operation="subtract">減少</button><button type="button" data-action="queue-currency" data-operation="set">設定數量</button></div>
       </section>
       <section class="fushenglu-card"><h2>物品</h2><ul class="fushenglu-plain-list">${items.map((item) => `<li><strong>${escapeHtml(item.name)}</strong> × ${escapeHtml(item.quantity)}<br><span class="fushenglu-muted">${escapeHtml(item.category)}${item.source ? ` · ${escapeHtml(item.source)}` : ''}</span></li>`).join('') || '<li class="fushenglu-muted">尚未記錄</li>'}</ul>
@@ -484,7 +537,7 @@ export function mountFushengluApp({
           <li>
             <label class="fushenglu-check">
               <input type="checkbox" checked disabled />
-              <span>${escapeHtml(action.value)}</span>
+              <span>${escapeHtml(formatActionValue(action))}</span>
             </label>
           </li>
         `,
@@ -899,6 +952,20 @@ export function mountFushengluApp({
     await analyzeBatch(batchId);
   }
 
+  async function scanExistingChat() {
+    const batchId = makeId('batch');
+    await store.update((current, context) =>
+      beginTurnBatch(current, context.messages, {
+        batchId,
+        timestamp: now(),
+        source: 'history_import',
+        forceAllMessages: true,
+      }).state,
+    );
+    currentScreen = 'review';
+    await analyzeBatch(batchId);
+  }
+
   async function analyzeCorrection(text) {
     if (!text.trim()) {
       throw new Error('請先輸入修正內容');
@@ -1204,12 +1271,38 @@ export function mountFushengluApp({
       return;
     }
 
+    if (action === 'scan-existing-chat') {
+      await runMutation(
+        scanExistingChat,
+        '既有聊天已建立變化預覽，請逐項核對後最後確認。',
+      );
+      return;
+    }
+
     if (action === 'queue-currency') {
+      const name =
+        String(root.querySelector('[data-currency-name]')?.value ?? '').trim() ||
+        '靈石';
+      const amountText = String(
+        root.querySelector('[data-currency-amount]')?.value ?? '',
+      ).trim();
+      const amount = Number(amountText);
+
+      if (!amountText) {
+        setStatus('請輸入貨幣數量。', 'error');
+        return;
+      }
+
+      if (!Number.isFinite(amount) || amount < 0) {
+        setStatus('貨幣數量必須是大於或等於零的數字。', 'error');
+        return;
+      }
+
       await runMutation(
         () =>
           queueCharacterOperation('currency', target.dataset.operation, {
-            name: root.querySelector('[data-currency-name]').value,
-            amount: Number(root.querySelector('[data-currency-amount]').value),
+            name,
+            amount,
           }),
         '貨幣變化已加入本輪預覽，請最後確認。',
       );

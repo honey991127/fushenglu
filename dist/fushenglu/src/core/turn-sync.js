@@ -372,6 +372,7 @@ export function beginTurnBatch(
     timestamp = new Date().toISOString(),
     source = 'turn',
     correctionText = null,
+    forceAllMessages = false,
   } = {},
 ) {
   requireTimestamp(timestamp);
@@ -392,7 +393,9 @@ export function beginTurnBatch(
           limitation: state.sync.limitation,
           branchFingerprint: state.sync.branchFingerprint ?? '',
         }
-      : detectNewMessages(state, rawMessages);
+      : forceAllMessages
+        ? normalizeChatMessages(rawMessages)
+        : detectNewMessages(state, rawMessages);
   const draft = {
     schemaVersion: 1,
     batchId,
@@ -486,11 +489,29 @@ function createReviewItem(proposal, originBucket, uncertain) {
 }
 
 function handoffTextFor(proposal) {
-  const value =
-    typeof proposal.value === 'string'
-      ? proposal.value
-      : JSON.stringify(proposal.value);
-  return `${proposal.kind} 狀態：${value}`;
+  const value = proposal.value;
+
+  if (proposal.kind === 'currency' && value && typeof value === 'object') {
+    const name = value.name ?? value.currency ?? '未命名貨幣';
+    const amount = value.amount ?? value.quantity ?? value.value ?? 0;
+    const operation =
+      proposal.operation === 'add'
+        ? '增加'
+        : proposal.operation === 'subtract'
+          ? '減少'
+          : '設定為';
+    return `貨幣：${name} ${operation} ${amount}`;
+  }
+
+  if (proposal.kind === 'inventory' && value && typeof value === 'object') {
+    const name = value.name ?? '未命名物品';
+    const amount = value.quantity ?? value.amount ?? value.value ?? 0;
+    return `物品：${name} ${proposal.operation} ${amount}`;
+  }
+
+  const textValue =
+    typeof value === 'string' ? value : JSON.stringify(value);
+  return `${proposal.kind} 狀態：${textValue}`;
 }
 
 function handoffEligible(item) {
