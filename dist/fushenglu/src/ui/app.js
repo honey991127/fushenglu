@@ -886,6 +886,16 @@ export function mountFushengluApp({
     return finishCommit(batchId, false);
   }
 
+  function readApiField(form, name) {
+    const field = form.querySelector(`[name="${name}"]`);
+
+    if (!field) {
+      throw new Error(`找不到 API 欄位：${name}`);
+    }
+
+    return String(field.value ?? '');
+  }
+
   function readApiForm() {
     const form = root.querySelector('[data-api-form]');
 
@@ -893,18 +903,17 @@ export function mountFushengluApp({
       throw new Error('找不到 API 設定表單');
     }
 
-    const data = new FormData(form);
     const existing = savedApiSettingsOrFallback();
-    const newKey = String(data.get('apiKey') ?? '');
+    const newKey = readApiField(form, 'apiKey');
     return {
       ...existing,
-      baseUrl: String(data.get('baseUrl') ?? ''),
+      baseUrl: readApiField(form, 'baseUrl'),
       apiKey: newKey || existing.apiKey,
-      analysisModel: String(data.get('analysisModel') ?? ''),
-      generationModel: String(data.get('generationModel') ?? ''),
-      validationModel: String(data.get('validationModel') ?? ''),
-      temperature: Number(data.get('temperature')),
-      maxOutputTokens: String(data.get('maxOutputTokens') ?? ''),
+      analysisModel: readApiField(form, 'analysisModel'),
+      generationModel: readApiField(form, 'generationModel'),
+      validationModel: readApiField(form, 'validationModel'),
+      temperature: Number(readApiField(form, 'temperature')),
+      maxOutputTokens: readApiField(form, 'maxOutputTokens'),
     };
   }
 
@@ -915,11 +924,10 @@ export function mountFushengluApp({
       throw new Error('找不到 API 設定表單');
     }
 
-    const data = new FormData(form);
     const existing = savedApiSettingsOrFallback();
-    const newKey = String(data.get('apiKey') ?? '');
+    const newKey = readApiField(form, 'apiKey');
     return {
-      baseUrl: String(data.get('baseUrl') ?? ''),
+      baseUrl: readApiField(form, 'baseUrl'),
       apiKey: newKey || existing.apiKey,
     };
   }
@@ -1418,3 +1426,4 @@ export function mountFushengluApp({
     },
   };
 }
+
