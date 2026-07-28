@@ -169,6 +169,28 @@ test('載入模型使用正確路徑與 Key，並去重排序', async () => {
   );
 });
 
+test('載入模型優先使用表單傳入的 Base URL，不依賴舊設定', async () => {
+  let requestedUrl;
+  const client = new OpenAICompatibleClient({
+    settingsStore: {
+      load() {
+        throw new Error('舊設定不應被讀取');
+      },
+    },
+    fetchImpl: async (url) => {
+      requestedUrl = url;
+      return response(200, { data: [{ id: 'form-model' }] });
+    },
+  });
+
+  await client.loadModels({
+    baseUrl: 'https://form.example.test/v1',
+    apiKey: 'form-key',
+  });
+
+  assert.equal(requestedUrl, 'https://form.example.test/v1/models');
+});
+
 test('載入模型可接受空清單', async () => {
   const client = new OpenAICompatibleClient({
     settingsStore: settingsStore(),

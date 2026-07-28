@@ -993,11 +993,20 @@ export function mountFushengluApp({
       return;
     }
 
+    let connection;
+
+    try {
+      connection = readApiConnectionForm();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error), 'error');
+      return;
+    }
+
     setBusy(true);
     setStatus('正在載入模型…');
 
     try {
-      loadedModels = await apiClient.loadModels(readApiConnectionForm());
+      loadedModels = await apiClient.loadModels(connection);
       updateModelMenus();
 
       setStatus(
@@ -1018,11 +1027,20 @@ export function mountFushengluApp({
       return null;
     }
 
+    let pendingSettings;
+
+    try {
+      pendingSettings = readApiForm();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error), 'error');
+      return null;
+    }
+
     setBusy(true);
     setStatus(testConnection ? '正在測試連線…' : '正在儲存設定…');
 
     try {
-      settingsStore.save(readApiForm());
+      settingsStore.save(pendingSettings);
       const saved = settingsStore.load();
       const result = testConnection ? await apiClient.testConnection() : null;
 

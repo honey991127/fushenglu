@@ -4,11 +4,45 @@ import { readFile } from 'node:fs/promises';
 
 const appSource = await readFile(new URL('../src/ui/app.js', import.meta.url), 'utf8');
 const styleSource = await readFile(new URL('../src/style.css', import.meta.url), 'utf8');
+const packageJson = JSON.parse(
+  await readFile(new URL('../package.json', import.meta.url), 'utf8'),
+);
+const manifestJson = JSON.parse(
+  await readFile(new URL('../manifest.json', import.meta.url), 'utf8'),
+);
 
 test('API 設定保存後會重新讀取並重繪設定頁', () => {
-  assert.match(appSource, /settingsStore\.save\(readApiForm\(\)\)/);
+  assert.match(appSource, /settingsStore\.save\(pendingSettings\)/);
   assert.match(appSource, /const saved = settingsStore\.load\(\);/);
   assert.match(appSource, /renderApi\(\);\s*showScreen\('api'\);/);
+});
+
+test('表單資料在停用控制項前捕捉，並傳入正確保存與載入流程', () => {
+  const loadSection = appSource.slice(
+    appSource.indexOf('async function loadModelsFromForm'),
+    appSource.indexOf('async function saveApiForm'),
+  );
+  const saveSection = appSource.slice(
+    appSource.indexOf('async function saveApiForm'),
+    appSource.indexOf('async function handleAction'),
+  );
+
+  assert.ok(
+    loadSection.indexOf('connection = readApiConnectionForm()') <
+      loadSection.indexOf('setBusy(true)'),
+  );
+  assert.match(loadSection, /apiClient\.loadModels\(connection\)/);
+  assert.ok(
+    saveSection.indexOf('pendingSettings = readApiForm()') <
+      saveSection.indexOf('setBusy(true)'),
+  );
+  assert.match(saveSection, /settingsStore\.save\(pendingSettings\)/);
+  assert.match(saveSection, /catch \(error\)[\s\S]*?setStatus\(/);
+});
+
+test('插件版本與 manifest 統一為 0.2.3', () => {
+  assert.equal(packageJson.version, '0.2.3');
+  assert.equal(manifestJson.version, '0.2.3');
 });
 
 test('未載入模型時三個模型輸入框仍是可見的自訂 combo box', () => {
