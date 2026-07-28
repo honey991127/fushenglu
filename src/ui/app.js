@@ -591,6 +591,55 @@ export function mountFushengluApp({
     `;
   }
 
+  function fallbackApiSettings() {
+    return {
+      schemaVersion: 1,
+      baseUrl: '',
+      apiKey: '',
+      analysisModel: '',
+      generationModel: '',
+      validationModel: '',
+      temperature: 0.2,
+      maxOutputTokens: 2048,
+    };
+  }
+
+  function modelMenuMarkup() {
+    if (loadedModels.length === 0) {
+      return '<p class="fushenglu-model-menu-empty">尚未載入模型，仍可手動輸入。</p>';
+    }
+
+    return loadedModels
+      .map(
+        (model) => `
+          <button type="button" class="fushenglu-model-option" data-action="choose-model" data-model="${escapeHtml(model)}" role="option">${escapeHtml(model)}</button>
+        `,
+      )
+      .join('');
+  }
+
+  function renderModelCombo(name, label, value) {
+    const menuId = `fushenglu-${name}-menu`;
+    return `
+      <label class="fushenglu-label">${label}
+        <span class="fushenglu-model-combo">
+          <input
+            class="fushenglu-input"
+            name="${name}"
+            value="${escapeHtml(value)}"
+            autocomplete="off"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-controls="${menuId}"
+            aria-expanded="false"
+          />
+          <button type="button" class="fushenglu-model-picker" data-action="toggle-model-menu" data-model-field="${name}" aria-label="選擇${label}" aria-expanded="false">選擇</button>
+          <span id="${menuId}" class="fushenglu-model-menu" data-model-menu="${name}" role="listbox" hidden>${modelMenuMarkup()}</span>
+        </span>
+      </label>
+    `;
+  }
+
   function renderApi() {
     const screen = elements.screens.get('api');
     let settings;
@@ -600,15 +649,7 @@ export function mountFushengluApp({
       settings = settingsStore.load();
     } catch (error) {
       settingsError = error instanceof Error ? error.message : String(error);
-      settings = {
-        baseUrl: '',
-        apiKey: '',
-        analysisModel: '',
-        generationModel: '',
-        validationModel: '',
-        temperature: 0.2,
-        maxOutputTokens: 2048,
-      };
+      settings = fallbackApiSettings();
     }
 
     screen.innerHTML = `
@@ -631,20 +672,9 @@ export function mountFushengluApp({
         <div class="fushenglu-actions">
           <button type="button" data-action="load-models">載入模型</button>
         </div>
-        <datalist id="fushenglu-model-options">
-          ${loadedModels
-            .map((model) => `<option value="${escapeHtml(model)}"></option>`)
-            .join('')}
-        </datalist>
-        <label class="fushenglu-label">劇情分析模型
-          <input class="fushenglu-input" name="analysisModel" list="fushenglu-model-options" value="${escapeHtml(settings.analysisModel)}" />
-        </label>
-        <label class="fushenglu-label">生成／問答模型
-          <input class="fushenglu-input" name="generationModel" list="fushenglu-model-options" value="${escapeHtml(settings.generationModel)}" />
-        </label>
-        <label class="fushenglu-label">校驗模型
-          <input class="fushenglu-input" name="validationModel" list="fushenglu-model-options" value="${escapeHtml(settings.validationModel)}" />
-        </label>
+        ${renderModelCombo('analysisModel', '劇情分析模型', settings.analysisModel)}
+        ${renderModelCombo('generationModel', '生成／問答模型', settings.generationModel)}
+        ${renderModelCombo('validationModel', '校驗模型', settings.validationModel)}
         <div class="fushenglu-two-columns">
           <label class="fushenglu-label">Temperature
             <input class="fushenglu-input" name="temperature" type="number" min="0" max="2" step="0.05" value="${escapeHtml(settings.temperature)}" />
@@ -864,7 +894,7 @@ export function mountFushengluApp({
     }
 
     const data = new FormData(form);
-    const existing = settingsStore.load();
+    const existing = savedApiSettingsOrFallback();
     const newKey = String(data.get('apiKey') ?? '');
     return {
       ...existing,
@@ -886,12 +916,76 @@ export function mountFushengluApp({
     }
 
     const data = new FormData(form);
-    const existing = settingsStore.load();
+    const existing = savedApiSettingsOrFallback();
     const newKey = String(data.get('apiKey') ?? '');
     return {
       baseUrl: String(data.get('baseUrl') ?? ''),
       apiKey: newKey || existing.apiKey,
     };
+  }
+
+  function savedApiSettingsOrFallback() {
+    try {
+      return settingsStore.load();
+    } catch {
+      return fallbackApiSettings();
+    }
+  }
+
+  function updateModelMenus() {
+    for (const menu of root.querySelectorAll('[data-model-menu]')) {
+      menu.innerHTML = modelMenuMarkup();
+    }
+  }
+
+  function closeModelMenus(exceptField = null) {
+    for (const menu of root.querySelectorAll('[data-model-menu]')) {
+      const field = menu.dataset.modelMenu;
+
+      if (field === exceptField) {
+        continue;
+      }
+
+      menu.hidden = true;
+      root.querySelector(`[data-model-field="${field}"]`)?.setAttribute(
+        'aria-expanded',
+        'false',
+      );
+      root.querySelector(`[name="${field}"]`)?.setAttribute(
+        'aria-expanded',
+        'false',
+      );
+    }
+  }
+
+  function toggleModelMenu(field) {
+    const menu = root.querySelector(`[data-model-menu="${field}"]`);
+    const picker = root.querySelector(`[data-model-field="${field}"]`);
+    const input = root.querySelector(`[name="${field}"]`);
+
+    if (!menu || !picker || !input) {
+      return;
+    }
+
+    const shouldOpen = menu.hidden;
+    closeModelMenus(shouldOpen ? field : null);
+    menu.hidden = !shouldOpen;
+    picker.setAttribute('aria-expanded', String(shouldOpen));
+    input.setAttribute('aria-expanded', String(shouldOpen));
+  }
+
+  function chooseModel(target) {
+    const menu = target.closest('[data-model-menu]');
+    const field = menu?.dataset.modelMenu;
+    const input = field ? root.querySelector(`[name="${field}"]`) : null;
+
+    if (!menu || !field || !input) {
+      return;
+    }
+
+    input.value = target.dataset.model ?? '';
+    closeModelMenus();
+    input.focus({ preventScroll: true });
   }
 
   async function loadModelsFromForm() {
@@ -904,22 +998,46 @@ export function mountFushengluApp({
 
     try {
       loadedModels = await apiClient.loadModels(readApiConnectionForm());
-      const options = root.querySelector('#fushenglu-model-options');
-
-      if (options) {
-        options.innerHTML = loadedModels
-          .map((model) => `<option value="${escapeHtml(model)}"></option>`)
-          .join('');
-      }
+      updateModelMenus();
 
       setStatus(
         loadedModels.length > 0
-          ? `已載入 ${loadedModels.length} 個模型`
-          : 'API 未提供可用模型，仍可手動輸入',
+          ? `成功載入 ${loadedModels.length} 個模型`
+          : '沒有找到模型，仍可手動輸入',
         loadedModels.length > 0 ? 'success' : 'warning',
       );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error), 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveApiForm({ testConnection = false } = {}) {
+    if (busy) {
+      return null;
+    }
+
+    setBusy(true);
+    setStatus(testConnection ? '正在測試連線…' : '正在儲存設定…');
+
+    try {
+      settingsStore.save(readApiForm());
+      const saved = settingsStore.load();
+      const result = testConnection ? await apiClient.testConnection() : null;
+
+      renderApi();
+      showScreen('api');
+      setStatus(
+        testConnection ? `連線成功：${result.model}` : '插件 API 設定已儲存',
+        'success',
+      );
+      return saved;
+    } catch (error) {
+      renderApi();
+      showScreen('api');
+      setStatus(error instanceof Error ? error.message : String(error), 'error');
+      return null;
     } finally {
       setBusy(false);
     }
@@ -1156,10 +1274,18 @@ export function mountFushengluApp({
       return;
     }
 
+    if (action === 'toggle-model-menu') {
+      toggleModelMenu(target.dataset.modelField);
+      return;
+    }
+
+    if (action === 'choose-model') {
+      chooseModel(target);
+      return;
+    }
+
     if (action === 'save-api') {
-      await runMutation(async () => {
-        settingsStore.save(readApiForm());
-      }, '插件 API 設定已儲存');
+      await saveApiForm();
       return;
     }
 
@@ -1169,11 +1295,7 @@ export function mountFushengluApp({
     }
 
     if (action === 'test-api') {
-      await runMutation(async () => {
-        settingsStore.save(readApiForm());
-        const result = await apiClient.testConnection();
-        setStatus(`連線成功：${result.model}`, 'success');
-      }, 'API 連線成功');
+      await saveApiForm({ testConnection: true });
     }
   }
 
@@ -1228,6 +1350,22 @@ export function mountFushengluApp({
 
     if (target) {
       void handleAction(target.dataset.action, target);
+    }
+  });
+
+  root.addEventListener('focusin', (event) => {
+    const field = event.target.closest?.('input, textarea, select');
+
+    if (!field || currentScreen !== 'api') {
+      return;
+    }
+
+    const revealField = () => field.scrollIntoView({ block: 'nearest' });
+
+    if (typeof globalThis.requestAnimationFrame === 'function') {
+      globalThis.requestAnimationFrame(revealField);
+    } else {
+      revealField();
     }
   });
 

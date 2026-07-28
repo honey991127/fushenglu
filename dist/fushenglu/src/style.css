@@ -165,17 +165,18 @@
 }
 
 .fushenglu-content {
+  flex: 1 1 auto;
   width: min(100%, 720px);
   min-height: 0;
   margin: 0 auto;
   padding:
     18px
     max(14px, env(safe-area-inset-right))
-    calc(118px + env(safe-area-inset-bottom))
+    calc(150px + env(safe-area-inset-bottom))
     max(14px, env(safe-area-inset-left));
   overflow-x: hidden;
   overflow-y: auto;
-  scroll-padding-bottom: 150px;
+  scroll-padding-bottom: 190px;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -323,6 +324,71 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.fushenglu-model-combo {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.fushenglu-model-combo .fushenglu-input {
+  min-width: 0;
+  margin-top: 0;
+}
+
+.fushenglu-model-picker {
+  min-height: 46px !important;
+  padding-inline: 12px !important;
+  font-size: 13px !important;
+}
+
+.fushenglu-model-menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  left: 0;
+  z-index: 8;
+  max-height: 176px;
+  overflow-y: auto;
+  border: 1px solid var(--fsl-border);
+  border-radius: 11px;
+  padding: 4px;
+  background: rgba(28, 20, 25, 0.98);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34);
+  -webkit-overflow-scrolling: touch;
+}
+
+.fushenglu-model-menu[hidden] {
+  display: none;
+}
+
+.fushenglu-model-option {
+  display: block;
+  width: 100%;
+  min-height: 40px !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  padding: 8px 10px !important;
+  overflow-wrap: anywhere;
+  text-align: left;
+  background: transparent !important;
+  font-size: 14px !important;
+}
+
+.fushenglu-model-option:active,
+.fushenglu-model-option:focus-visible {
+  background: rgba(151, 84, 61, 0.32) !important;
+}
+
+.fushenglu-model-menu-empty {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--fsl-muted);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .fushenglu-actions {
@@ -528,7 +594,11 @@
 }
 
 .fushenglu-api-form > .fushenglu-label {
-  margin-bottom: 15px;
+  margin-bottom: 10px;
+}
+
+.fushenglu-screen[data-screen="api"] {
+  padding-bottom: calc(46px + env(safe-area-inset-bottom));
 }
 
 .fushenglu-nav {

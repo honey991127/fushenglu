@@ -115,16 +115,25 @@ test('最大輸出 Tokens 拒絕非範圍內整數', () => {
   }
 });
 
-test('最大輸出 Tokens 保存後重新建立設定 Store 仍保持正確', () => {
+test('重新開啟設定頁可讀回保存的 URL、模型與 Tokens', () => {
   const storage = memoryStorage();
   const firstStore = new BrowserApiSettingsStore({ storage });
   firstStore.save({
     ...DEFAULT_API_SETTINGS,
+    baseUrl: 'https://api.example.test/v1',
+    analysisModel: 'analysis-model',
+    generationModel: 'generation-model',
+    validationModel: 'validation-model',
     maxOutputTokens: '8192',
   });
   const reopenedStore = new BrowserApiSettingsStore({ storage });
 
-  assert.equal(reopenedStore.load().maxOutputTokens, 8192);
+  const reopened = reopenedStore.load();
+  assert.equal(reopened.baseUrl, 'https://api.example.test/v1');
+  assert.equal(reopened.analysisModel, 'analysis-model');
+  assert.equal(reopened.generationModel, 'generation-model');
+  assert.equal(reopened.validationModel, 'validation-model');
+  assert.equal(reopened.maxOutputTokens, 8192);
 });
 
 test('載入模型使用正確路徑與 Key，並去重排序', async () => {
@@ -182,7 +191,10 @@ for (const status of [401, 404]) {
     await assert.rejects(client.loadModels(), (error) => {
       assert.equal(error.status, status);
       assert.doesNotMatch(error.message, /sk-super-secret/);
-      assert.match(error.message, new RegExp(String(status)));
+      assert.match(
+        error.message,
+        status === 401 ? /API Key 無效/ : /不支援模型列表/,
+      );
       return true;
     });
   });

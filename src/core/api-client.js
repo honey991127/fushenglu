@@ -491,13 +491,14 @@ export class OpenAICompatibleClient {
   }
 
   async loadModels(connection = null) {
-    const storedSettings = this.settingsStore.load();
+    const hasConnection = Boolean(connection && typeof connection === 'object');
+    const storedSettings = hasConnection ? null : this.settingsStore.load();
     const baseUrl =
-      connection && Object.hasOwn(connection, 'baseUrl')
+      hasConnection && Object.hasOwn(connection, 'baseUrl')
         ? connection.baseUrl
         : storedSettings.baseUrl;
     const apiKey =
-      connection && Object.hasOwn(connection, 'apiKey')
+      hasConnection && Object.hasOwn(connection, 'apiKey')
         ? String(connection.apiKey ?? '').trim()
         : storedSettings.apiKey;
     const url = createModelsUrl(baseUrl);
@@ -528,7 +529,13 @@ export class OpenAICompatibleClient {
       payload = await response.json();
     } catch (error) {
       if (!response.ok) {
-        throw new ApiRequestError(`載入模型失敗（HTTP ${response.status}）`, {
+        const message =
+          response.status === 401
+            ? 'API Key 無效'
+            : response.status === 404
+              ? '此中轉站不支援模型列表'
+              : `載入模型失敗（HTTP ${response.status}）`;
+        throw new ApiRequestError(message, {
           status: response.status,
           cause: error,
         });
@@ -541,6 +548,16 @@ export class OpenAICompatibleClient {
     }
 
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new ApiRequestError('API Key 無效', { status: 401 });
+      }
+
+      if (response.status === 404) {
+        throw new ApiRequestError('此中轉站不支援模型列表', {
+          status: 404,
+        });
+      }
+
       const summary = safeErrorSummary(payload, response.status);
       const safeMessage = redactSensitive(summary.message, [apiKey]);
       throw new ApiRequestError(
