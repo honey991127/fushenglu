@@ -247,6 +247,124 @@ export function createEmptyAnalysisResult() {
   };
 }
 
+function cloneJson(value) {
+  return typeof structuredClone === 'function'
+    ? structuredClone(value)
+    : JSON.parse(JSON.stringify(value));
+}
+
+export function splitAnalysisMessages(
+  messages,
+  {
+    maxMessages = 8,
+    maxCharacters = 9000,
+  } = {},
+) {
+  if (!Array.isArray(messages)) {
+    throw new TypeError('待分析訊息必須是陣列');
+  }
+
+  if (!Number.isInteger(maxMessages) || maxMessages < 1) {
+    throw new TypeError('maxMessages 必須是正整數');
+  }
+
+  if (!Number.isInteger(maxCharacters) || maxCharacters < 1000) {
+    throw new TypeError('maxCharacters 必須是至少 1000 的整數');
+  }
+
+  const chunks = [];
+  let current = [];
+  let characterCount = 0;
+
+  for (const message of messages) {
+    const size =
+      String(message?.messageRef ?? '').length +
+      String(message?.role ?? '').length +
+      String(message?.content ?? '').length;
+    const exceedsLimit =
+      current.length > 0 &&
+      (current.length >= maxMessages ||
+        characterCount + size > maxCharacters);
+
+    if (exceedsLimit) {
+      chunks.push(current);
+      current = [];
+      characterCount = 0;
+    }
+
+    current.push(cloneJson(message));
+    characterCount += size;
+  }
+
+  if (current.length > 0) {
+    chunks.push(current);
+  }
+
+  return chunks;
+}
+
+export function mergeAnalysisResults(results = []) {
+  if (!Array.isArray(results)) {
+    throw new TypeError('待合併分析結果必須是陣列');
+  }
+
+  const merged = createEmptyAnalysisResult();
+  const seenDedupeKeys = new Set();
+  const seenProposalIds = new Set();
+  const seenEvidence = new Set();
+  const buckets = [...ANALYSIS_CHANGE_BUCKETS, 'uncertainItems'];
+
+  results.forEach((rawResult, resultIndex) => {
+    const result = assertAnalysisResult(
+      normalizeAnalysisResultShape(rawResult),
+    );
+
+    for (const bucket of buckets) {
+      result[bucket].forEach((rawProposal, proposalIndex) => {
+        const dedupeIdentity =
+          `${rawProposal.kind}:${rawProposal.dedupeKey}`;
+
+        if (seenDedupeKeys.has(dedupeIdentity)) {
+          return;
+        }
+
+        let proposalId = rawProposal.proposalId;
+
+        if (seenProposalIds.has(proposalId)) {
+          proposalId =
+            `${proposalId}-part-${resultIndex + 1}-${proposalIndex + 1}`;
+        }
+
+        while (seenProposalIds.has(proposalId)) {
+          proposalId = `${proposalId}-duplicate`;
+        }
+
+        const proposal = {
+          ...cloneJson(rawProposal),
+          proposalId,
+        };
+
+        merged[bucket].push(proposal);
+        seenDedupeKeys.add(dedupeIdentity);
+        seenProposalIds.add(proposalId);
+      });
+    }
+
+    for (const evidence of result.evidence) {
+      const identity = `${evidence.messageRef}\n${evidence.quote}`;
+
+      if (seenEvidence.has(identity)) {
+        continue;
+      }
+
+      merged.evidence.push(cloneJson(evidence));
+      seenEvidence.add(identity);
+    }
+  });
+
+  return assertAnalysisResult(merged);
+}
+
 export function normalizeAnalysisResultShape(value) {
   if (!isPlainObject(value)) {
     return value;

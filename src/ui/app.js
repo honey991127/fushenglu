@@ -1,5 +1,9 @@
 import { maskApiKey } from '../core/api-client.js';
-import { createEmptyAnalysisResult } from '../core/analysis-schema.js';
+import {
+  createEmptyAnalysisResult,
+  mergeAnalysisResults,
+  splitAnalysisMessages,
+} from '../core/analysis-schema.js';
 import { createCharacterAction } from '../core/character-state.js';
 import {
   addDraftAction,
@@ -418,7 +422,7 @@ export function mountFushengluApp({
       </section>
       <section class="fushenglu-card">
         <h2>讀取既有聊天</h2>
-        <p class="fushenglu-help">重新分析目前聊天的既有樓層，只建立變化預覽；最後確認前不會寫入正式資料。長聊天可能消耗較多 API Tokens。</p>
+        <p class="fushenglu-help">既有樓層會自動分成小段逐段分析，再合併為一次預覽。某段失敗時只會從該段繼續；最後確認前不會寫入正式資料。</p>
         <button type="button" class="fushenglu-secondary-button" data-action="scan-existing-chat">掃描既有聊天樓層</button>
       </section>
       <div class="fushenglu-sticky-action">
@@ -910,6 +914,140 @@ export function mountFushengluApp({
     }
   }
 
+  async function saveHistoryImportProgress(batchId, progress) {
+    const timestamp = now();
+
+    await store.update((current) => ({
+      ...current,
+      updatedAt: timestamp,
+      batches: current.batches.map((item) =>
+        item.batchId === batchId
+          ? {
+              ...item,
+              historyImportProgress: {
+                schemaVersion: 1,
+                ...progress,
+                updatedAt: timestamp,
+              },
+            }
+          : item,
+      ),
+    }));
+  }
+
+  function historyImportProgressFor(batch, totalChunks) {
+    const saved = batch.historyImportProgress;
+
+    if (
+      saved?.schemaVersion === 1 &&
+      saved.totalChunks === totalChunks &&
+      Number.isInteger(saved.nextChunkIndex) &&
+      saved.nextChunkIndex >= 0 &&
+      saved.nextChunkIndex <= totalChunks &&
+      saved.mergedAnalysis
+    ) {
+      return {
+        ...saved,
+        mergedAnalysis: mergeAnalysisResults([
+          saved.mergedAnalysis,
+        ]),
+      };
+    }
+
+    return {
+      schemaVersion: 1,
+      totalChunks,
+      nextChunkIndex: 0,
+      completedChunks: 0,
+      failedChunkIndex: null,
+      mergedAnalysis: createEmptyAnalysisResult(),
+    };
+  }
+
+  async function analyzeHistoryImportBatch(batch) {
+    const messages = batch.inputMessages.map(
+      ({ messageRef, role, content }) => ({
+        messageRef,
+        role,
+        content,
+      }),
+    );
+    const chunks = splitAnalysisMessages(messages, {
+      maxMessages: 8,
+      maxCharacters: 9000,
+    });
+
+    if (chunks.length === 0) {
+      throw new Error('目前聊天沒有可分析的 user／assistant 訊息。');
+    }
+
+    let progress = historyImportProgressFor(batch, chunks.length);
+    let mergedAnalysis = progress.mergedAnalysis;
+
+    for (
+      let chunkIndex = progress.nextChunkIndex;
+      chunkIndex < chunks.length;
+      chunkIndex += 1
+    ) {
+      setStatus(
+        `正在分段分析既有聊天：第 ${chunkIndex + 1}／${chunks.length} 段`,
+        'neutral',
+      );
+
+      let partAnalysis;
+
+      try {
+        partAnalysis = await apiClient.analyzeMessages(
+          chunks[chunkIndex],
+          {
+            batchId:
+              `${batch.batchId}:part:${chunkIndex + 1}`,
+          },
+        );
+      } catch (error) {
+        await saveHistoryImportProgress(batch.batchId, {
+          ...progress,
+          totalChunks: chunks.length,
+          nextChunkIndex: chunkIndex,
+          completedChunks: chunkIndex,
+          failedChunkIndex: chunkIndex,
+          mergedAnalysis,
+        });
+
+        throw new Error(
+          `既有聊天第 ${chunkIndex + 1}／${chunks.length} 段分析失敗：${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+
+      mergedAnalysis = mergeAnalysisResults([
+        mergedAnalysis,
+        partAnalysis,
+      ]);
+      progress = {
+        schemaVersion: 1,
+        totalChunks: chunks.length,
+        nextChunkIndex: chunkIndex + 1,
+        completedChunks: chunkIndex + 1,
+        failedChunkIndex: null,
+        mergedAnalysis,
+      };
+
+      await saveHistoryImportProgress(
+        batch.batchId,
+        progress,
+      );
+    }
+
+    setStatus(
+      `既有聊天 ${chunks.length} 段分析完成，正在建立合併預覽…`,
+      'neutral',
+    );
+
+    return mergedAnalysis;
+  }
+
   async function analyzeBatch(batchId, correction = false) {
     const snapshot = await store.read();
     const batch = getBatch(snapshot.state, batchId);
@@ -921,14 +1059,16 @@ export function mountFushengluApp({
     try {
       const analysis = correction
         ? await apiClient.parseCorrection(batch.correctionText, { batchId })
-        : await apiClient.analyzeMessages(
-            batch.inputMessages.map(({ messageRef, role, content }) => ({
-              messageRef,
-              role,
-              content,
-            })),
-            { batchId },
-          );
+        : batch.source === 'history_import'
+          ? await analyzeHistoryImportBatch(batch)
+          : await apiClient.analyzeMessages(
+              batch.inputMessages.map(({ messageRef, role, content }) => ({
+                messageRef,
+                role,
+                content,
+              })),
+              { batchId },
+            );
       await store.update((current) =>
         completeBatchAnalysis(current, batchId, analysis, now()),
       );
