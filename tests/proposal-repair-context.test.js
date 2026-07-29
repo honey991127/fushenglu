@@ -107,12 +107,12 @@ test('修復名稱必須逐字存在於目前聊天，不可從其他世界補�
   );
 });
 
-test('缺少名稱時 AI 只根據當前聊天逐筆修復', async () => {
+test('缺少名稱時 AI 只根據當前聊天批次修復', async () => {
   let calls = 0;
   const client = new OpenAICompatibleClient({
     settingsStore: settingsStore(),
     logger: { warn() {}, error() {}, info() {} },
-    fetchImpl: async () => {
+    fetchImpl: async (_url, options) => {
       calls += 1;
 
       if (calls === 1) {
@@ -131,9 +131,17 @@ test('缺少名稱時 AI 只根據當前聊天逐筆修復', async () => {
         }));
       }
 
+      const requestBody = JSON.parse(options.body);
+      const repairInput = JSON.parse(
+        requestBody.messages[1].content,
+      );
+      const proposalId =
+        repairInput.incompleteCandidates[0].proposalId;
+
       return response(JSON.stringify({
         schemaVersion: 1,
         changes: [{
+          proposalId,
           kind: 'inventory',
           operation: 'add',
           value: {
@@ -167,7 +175,6 @@ test('缺少名稱時 AI 只根據當前聊天逐筆修復', async () => {
   );
   assert.equal(result.uncertainItems.length, 0);
 });
-
 test('AI 無法從原文確定名稱時不猜，改送待確認且不令整批失敗', async () => {
   let calls = 0;
   const client = new OpenAICompatibleClient({

@@ -399,17 +399,27 @@ changes 必須是陣列。每項包含 kind、operation、value、evidenceMessag
 evidenceMessageRef 使用 correction:<batchId>。不得直接修改資料、不得輸出 Markdown、不得虛構。
 `.trim();
 
-const SINGLE_PROPOSAL_REPAIR_SYSTEM_PROMPT = `
-你是浮生錄的單筆資料修復器。你只能根據本次提供的 currentChatMessages 修復一筆候選。
-只輸出 {"schemaVersion":1,"changes":[]}；changes 最多一項。
-規則：
-1. 不得使用其他聊天、其他角色卡、常見世界觀或模型記憶。
-2. 物品、貨幣、技能、境界、衣物與狀態名稱必須逐字出現在 currentChatMessages。
-3. 不得翻譯、改名、概括或補造名稱。
-4. evidenceMessageRef 必須使用 currentChatMessages 裡實際存在的 messageRef。
-5. 原文不足以確定時回傳空 changes，不要猜。
-6. 保持原候選的事實方向，只修補缺失或格式錯誤的欄位。
+const BULK_PROPOSAL_REPAIR_SYSTEM_PROMPT = `
+你是浮生錄的批次資料修復器。只根據每筆候選自己的 currentChatMessages 修復。
+只輸出 {"schemaVersion":1,"changes":[]}，不得輸出 Markdown 或說明。
+每個輸出 change 的 proposalId 必須逐字等於輸入中的 proposalId，每個 proposalId 最多一次。
+名稱必須逐字存在於該候選自己的 currentChatMessages；不得使用其他聊天、角色卡、世界觀或模型記憶。
+不得翻譯、改名、概括或補造。evidenceMessageRef 必須存在於該候選的 currentChatMessages。
+保持 kind、事實方向與 dedupeKey；原文不足以確定時省略該 change，不要猜。
 `.trim();
+
+function withTimeout(promise, timeoutMs, message) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new ApiRequestError(message)),
+      timeoutMs,
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    clearTimeout(timeoutId);
+  });
+}
 
 export class OpenAICompatibleClient {
   constructor({
@@ -632,62 +642,101 @@ export class OpenAICompatibleClient {
     return parseModelList(payload);
   }
 
-  async repairIncompleteAnalysis(result, messages, { batchId } = {}) {
+  async repairIncompleteAnalysis(
+    result,
+    messages,
+    { batchId, onProgress = null } = {},
+  ) {
     let working = normalizeAnalysisPayloads(result);
     const incomplete = listIncompleteProposals(working);
+    const groupSize = 8;
+    const totalGroups = Math.ceil(incomplete.length / groupSize);
 
-    for (const item of incomplete) {
-      const relevantMessages = selectRelevantMessages(
-        messages,
-        item.proposal,
+    for (let groupIndex = 0; groupIndex < totalGroups; groupIndex += 1) {
+      const group = incomplete.slice(
+        groupIndex * groupSize,
+        (groupIndex + 1) * groupSize,
       );
-      let replacement = null;
+      const contexts = new Map(
+        group.map((item) => [
+          item.proposal.proposalId,
+          selectRelevantMessages(messages, item.proposal),
+        ]),
+      );
 
+      onProgress?.({
+        groupIndex,
+        totalGroups,
+        completedCandidates: groupIndex * groupSize,
+        totalCandidates: incomplete.length,
+      });
+
+      let candidates = [];
       try {
-        const repairContent = await this.request(
-          'analysis',
-          [
+        const repairContent = await withTimeout(
+          this.request(
+            'analysis',
+            [
+              {
+                role: 'system',
+                content: BULK_PROPOSAL_REPAIR_SYSTEM_PROMPT,
+              },
+              {
+                role: 'user',
+                content: JSON.stringify({
+                  schemaVersion: 1,
+                  batchId,
+                  incompleteCandidates: group.map((item) => ({
+                    proposalId: item.proposal.proposalId,
+                    incompleteCandidate: item.proposal,
+                    detectedIssues: item.issues,
+                    currentChatMessages: contexts.get(
+                      item.proposal.proposalId,
+                    ),
+                  })),
+                }),
+              },
+            ],
             {
-              role: 'system',
-              content: SINGLE_PROPOSAL_REPAIR_SYSTEM_PROMPT,
+              jsonSchema: FLAT_STORY_ANALYSIS_JSON_SCHEMA,
+              maxOutputTokens: 2048,
+              temperature: 0,
             },
-            {
-              role: 'user',
-              content: JSON.stringify({
-                schemaVersion: 1,
-                batchId,
-                incompleteCandidate: item.proposal,
-                detectedIssues: item.issues,
-                currentChatMessages: relevantMessages,
-              }),
-            },
-          ],
-          {
-            jsonSchema: FLAT_STORY_ANALYSIS_JSON_SCHEMA,
-            maxOutputTokens: 768,
-            temperature: 0,
-          },
+          ),
+          45000,
+          '候選批次修復超過 45 秒，未修復項目已送待確認',
         );
-        const repairResult = parseAndConvertFlatAnalysis(repairContent);
-        const candidates = flattenAnalysisProposals(repairResult);
+        candidates = flattenAnalysisProposals(
+          parseAndConvertFlatAnalysis(repairContent),
+        );
+      } catch (error) {
+        this.logger.warn('候選批次自動修復失敗，改送待確認', {
+          batchId,
+          groupIndex,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      for (const item of group) {
         const candidate =
           candidates.find(
-            (proposal) => proposal.kind === item.proposal.kind,
+            (proposal) =>
+              proposal.proposalId === item.proposal.proposalId,
           ) ?? null;
+        let replacement = null;
 
         if (candidate) {
           const inspected = inspectProposalPayload({
             ...candidate,
             proposalId: item.proposal.proposalId,
             dedupeKey: item.proposal.dedupeKey,
+            kind: item.proposal.kind,
           });
+          const context = contexts.get(item.proposal.proposalId);
 
           if (
             inspected.complete &&
-            repairedProposalIsGrounded(
-              inspected.proposal,
-              relevantMessages,
-            )
+            repairedProposalIsGrounded(inspected.proposal, context)
           ) {
             replacement = {
               ...inspected.proposal,
@@ -697,23 +746,23 @@ export class OpenAICompatibleClient {
             };
           }
         }
-      } catch (error) {
-        this.logger.warn('單筆候選自動修復失敗，改送待確認', {
-          batchId,
-          proposalId: item.proposal.proposalId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
 
-      working = replacement
-        ? replaceAnalysisProposal(
-            working,
-            item.proposal.proposalId,
-            replacement,
-          )
-        : markProposalUnresolved(working, item);
+        working = replacement
+          ? replaceAnalysisProposal(
+              working,
+              item.proposal.proposalId,
+              replacement,
+            )
+          : markProposalUnresolved(working, item);
+      }
     }
 
+    onProgress?.({
+      groupIndex: totalGroups,
+      totalGroups,
+      completedCandidates: incomplete.length,
+      totalCandidates: incomplete.length,
+    });
     return working;
   }
 

@@ -1174,7 +1174,27 @@ export function mountFushengluApp({
               content,
             }),
           ),
-          { batchId: `${batchId}:precommit` },
+          {
+            batchId: `${batchId}:precommit`,
+            onProgress: ({
+              groupIndex,
+              totalGroups,
+              completedCandidates,
+              totalCandidates,
+            }) => {
+              if (groupIndex >= totalGroups) {
+                setStatus(
+                  `候選修復完成：${totalCandidates} 筆已檢查`,
+                  'neutral',
+                );
+                return;
+              }
+              setStatus(
+                `正在批次修復候選：第 ${groupIndex + 1}／${totalGroups} 組（已處理 ${completedCandidates}／${totalCandidates} 筆）`,
+                'neutral',
+              );
+            },
+          },
         );
 
         await store.update((current) =>
