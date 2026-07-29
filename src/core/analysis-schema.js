@@ -586,11 +586,20 @@ export function validateValidationResult(value) {
     throw new AnalysisSchemaError('校驗模型結果必須是 JSON 物件');
   }
 
+  const issues =
+    Array.isArray(value.issues)
+      ? value.issues
+      : typeof value.issues === 'string'
+        ? [value.issues]
+        : value.issues === undefined || value.issues === null
+          ? []
+          : null;
+
   if (
-    value.schemaVersion !== 1 ||
+    (value.schemaVersion ?? 1) !== 1 ||
     typeof value.valid !== 'boolean' ||
-    !Array.isArray(value.issues) ||
-    value.issues.some((issue) => typeof issue !== 'string')
+    issues === null ||
+    issues.some((issue) => typeof issue !== 'string')
   ) {
     throw new AnalysisSchemaError('校驗模型結果不符合 Schema');
   }
@@ -598,6 +607,6 @@ export function validateValidationResult(value) {
   return {
     schemaVersion: 1,
     valid: value.valid,
-    issues: [...value.issues],
+    issues: [...issues],
   };
 }

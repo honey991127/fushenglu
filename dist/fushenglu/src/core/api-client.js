@@ -1,11 +1,13 @@
 import {
   AnalysisSchemaError,
-  STORY_ANALYSIS_JSON_SCHEMA,
   VALIDATION_RESULT_JSON_SCHEMA,
-  parseAndValidateAnalysis,
   parseJsonObject,
   validateValidationResult,
 } from './analysis-schema.js';
+import {
+  FLAT_STORY_ANALYSIS_JSON_SCHEMA,
+  parseAndConvertFlatAnalysis,
+} from './flat-analysis.js';
 
 export const API_SETTINGS_SCHEMA_VERSION = 1;
 export const API_SETTINGS_STORAGE_KEY = 'fushenglu.apiSettings.v1';
@@ -344,43 +346,45 @@ function safeErrorSummary(payload, status) {
   return { message, code };
 }
 
-const ANALYSIS_OUTPUT_TEMPLATE = {
+const FLAT_ANALYSIS_OUTPUT_TEMPLATE = {
   schemaVersion: 1,
-  storyTimeChanges: [],
-  inventoryChanges: [],
-  currencyChanges: [],
-  wardrobeChanges: [],
-  skillChanges: [],
-  cultivationChanges: [],
-  personChanges: [],
-  placeChanges: [],
-  evaluationChanges: [],
-  uncertainItems: [],
-  evidence: [],
+  changes: [],
 };
 
 const ANALYSIS_SYSTEM_PROMPT = `
-你是浮生錄插件的劇情分析器。你只輸出一個 JSON 物件，不得直接修改資料，不得輸出 Markdown。
-最外層必須完整包含以下 12 個鍵，鍵名及大小寫不可改變，也不可省略：
-${JSON.stringify(ANALYSIS_OUTPUT_TEMPLATE)}
-即使某類沒有變化，仍必須保留該鍵並填入空陣列。
-只分析輸入中的 user／assistant 訊息。回憶、引用、傳聞、假設和夢境中的時間不可當作主時間線；
-story_time 必須填 timelineContext。明確小型變化可標 minor；衝突、突破、新技能、新人物、
-新地點或所有權含糊者必須標 major/critical 並放 uncertainItems。每項證據必須引用輸入的 messageRef。
-dedupeKey 必須可重現且代表同一事實。沒有變化時原樣回傳上述空模板。
+你是浮生錄插件的劇情分析器。只輸出單一 JSON 物件，不得輸出 Markdown 或解釋。
+最外層只需要：
+${JSON.stringify(FLAT_ANALYSIS_OUTPUT_TEMPLATE)}
+不要輸出 storyTimeChanges、inventoryChanges、currencyChanges 等分類陣列；插件會依 kind 自行分類。
+changes 必須是陣列。每項 change 使用：
+{
+  "kind": "story_time|inventory|currency|wardrobe|skill|cultivation|person|place|evaluation|conflict|other",
+  "operation": "非空字串",
+  "value": "JSON 值",
+  "evidenceMessageRef": "輸入訊息的 messageRef",
+  "evidenceQuote": "簡短原文",
+  "confidence": 0 到 1,
+  "reason": "簡短原因",
+  "severity": "minor|moderate|major|critical",
+  "dedupeKey": "可重現的唯一事實鍵"
+}
+沒有變化時回傳 {"schemaVersion":1,"changes":[]}。
+回憶、引用、傳聞、假設與夢境不可當作主線；story_time 請加入 timelineContext。
+所有權含糊、突破、新技能、新人物、新地點或衝突請降低 confidence 或標 major/critical。
 `.trim();
 
 const ANALYSIS_REPAIR_SYSTEM_PROMPT = `
-上一個分析輸出沒有符合浮生錄 Schema。請把它修正為單一 JSON 物件，不得補充說明或 Markdown。
-最外層必須完整包含以下 12 個鍵，鍵名及大小寫不可改變：
-${JSON.stringify(ANALYSIS_OUTPUT_TEMPLATE)}
-缺少的分類請填空陣列；保留原輸出中可確定且有證據的候選，不得虛構新內容。
+請把上一個輸出修正成單一 JSON 物件，不得輸出 Markdown 或說明：
+{"schemaVersion":1,"changes":[]}
+不要輸出多個分類陣列。changes 必須是陣列；若只有一項，也要放進陣列。
+只保留原輸出中有證據的內容，不得虛構。
 `.trim();
 
 const CORRECTION_SYSTEM_PROMPT = `
-你是浮生錄插件的自然語言修正解析器。你只能把玩家文字轉成候選修改，輸出完整劇情分析 JSON Schema；
-不得直接改資料。把確定的修正放在對應 changes 陣列，不確定修正放 uncertainItems。
-evidenceMessageRef 使用 correction:<batchId>，reason 簡短說明解析方式。不得虛構未提供內容或輸出 Markdown。
+你是浮生錄插件的自然語言修正解析器。只輸出：
+{"schemaVersion":1,"changes":[]}
+changes 必須是陣列。每項包含 kind、operation、value、evidenceMessageRef、confidence、reason、severity、dedupeKey。
+evidenceMessageRef 使用 correction:<batchId>。不得直接修改資料、不得輸出 Markdown、不得虛構。
 `.trim();
 
 export class OpenAICompatibleClient {
@@ -612,12 +616,12 @@ export class OpenAICompatibleClient {
           }),
         },
       ],
-      { jsonSchema: STORY_ANALYSIS_JSON_SCHEMA },
+      { jsonSchema: FLAT_STORY_ANALYSIS_JSON_SCHEMA },
     );
     let result;
 
     try {
-      result = parseAndValidateAnalysis(content);
+      result = parseAndConvertFlatAnalysis(content);
     } catch (error) {
       if (!(error instanceof AnalysisSchemaError)) {
         throw error;
@@ -632,16 +636,16 @@ export class OpenAICompatibleClient {
             content: JSON.stringify({
               batchId,
               invalidOutput: content,
-              requiredTemplate: ANALYSIS_OUTPUT_TEMPLATE,
+              requiredTemplate: FLAT_ANALYSIS_OUTPUT_TEMPLATE,
             }),
           },
         ],
         {
-          jsonSchema: STORY_ANALYSIS_JSON_SCHEMA,
+          jsonSchema: FLAT_STORY_ANALYSIS_JSON_SCHEMA,
           temperature: 0,
         },
       );
-      result = parseAndValidateAnalysis(repairedContent);
+      result = parseAndConvertFlatAnalysis(repairedContent);
     }
 
     const settings = this.settingsStore.load();
@@ -694,11 +698,11 @@ export class OpenAICompatibleClient {
         },
       ],
       {
-        jsonSchema: STORY_ANALYSIS_JSON_SCHEMA,
+        jsonSchema: FLAT_STORY_ANALYSIS_JSON_SCHEMA,
         temperature: 0,
       },
     );
 
-    return parseAndValidateAnalysis(content);
+    return parseAndConvertFlatAnalysis(content);
   }
 }
