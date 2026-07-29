@@ -7,6 +7,9 @@ import {
   actionRequiresPending,
   rebuildCharacterState,
 } from './character-state.js';
+import {
+  inspectProposalPayload,
+} from './proposal-repair.js';
 
 export const BATCH_STATUSES = Object.freeze([
   'draft',
@@ -575,6 +578,88 @@ export function completeBatchAnalysis(
   return stateWithTimestamp(replaceBatch(state, ready), timestamp);
 }
 
+export function refreshBatchAnalysis(
+  state,
+  batchId,
+  result,
+  timestamp = new Date().toISOString(),
+) {
+  const analysis = assertAnalysisResult(result);
+  const batch = requireBatch(state, batchId);
+
+  if (batch.status !== 'review_ready') {
+    throw new Error('只有 review_ready 批次可以刷新分析預覽');
+  }
+
+  const previousItems = new Map(
+    [...batch.detectedChanges, ...batch.uncertainItems].map((item) => [
+      item.proposalId,
+      item,
+    ]),
+  );
+  const previousDrafts = new Map(
+    batch.handoffDrafts.map((draft) => [draft.draftId, draft]),
+  );
+  const preserveReview = (item) => {
+    const previous = previousItems.get(item.proposalId);
+
+    if (!previous) {
+      return item;
+    }
+
+    return {
+      ...item,
+      reviewDisposition:
+        item.uncertain && previous.reviewDisposition !== 'reject'
+          ? 'pending'
+          : previous.reviewDisposition,
+      editedByPlayer: previous.editedByPlayer,
+    };
+  };
+  const detectedChanges = ANALYSIS_CHANGE_BUCKETS.flatMap((bucket) =>
+    analysis[bucket].map((proposal) =>
+      preserveReview(createReviewItem(proposal, bucket, false)),
+    ),
+  );
+  const uncertainItems = analysis.uncertainItems.map((proposal) =>
+    preserveReview(
+      createReviewItem(proposal, 'uncertainItems', true),
+    ),
+  );
+  const handoffDrafts = [
+    ...[...detectedChanges, ...uncertainItems].map((item) => {
+      const fresh = handoffDraftFor(item);
+      const previous = previousDrafts.get(fresh.draftId);
+
+      return previous
+        ? {
+            ...fresh,
+            text: previous.text,
+            mode: previous.mode,
+            active:
+              fresh.active &&
+              previous.active &&
+              previous.mode !== 'never',
+          }
+        : fresh;
+    }),
+    ...batch.draftActions.map((action) => handoffDraftFor(action, 'action')),
+  ];
+  const refreshed = {
+    ...batch,
+    detectedChanges,
+    uncertainItems,
+    evidence: clone(analysis.evidence),
+    handoffDrafts,
+    updatedAt: requireTimestamp(timestamp),
+  };
+
+  return stateWithTimestamp(
+    replaceBatch(state, refreshed),
+    timestamp,
+  );
+}
+
 export function failBatch(
   state,
   batchId,
@@ -946,27 +1031,36 @@ export function commitBatch(
       continue;
     }
 
-    if (existingDedupeKeys.has(action.dedupeKey)) {
+    const inspected = inspectProposalPayload(action);
+    const commitAction = {
+      ...action,
+      ...inspected.proposal,
+      payloadIssues: [...inspected.issues],
+    };
+
+    if (existingDedupeKeys.has(commitAction.dedupeKey)) {
       continue;
     }
 
-    if (actionRequiresPending(state, action)) {
+    if (!inspected.complete || actionRequiresPending(state, commitAction)) {
       const pendingId = createId('pending');
-      newPending.push(pendingFromProposal(batch, action, pendingId, timestamp));
+      newPending.push(
+        pendingFromProposal(batch, commitAction, pendingId, timestamp),
+      );
       pendingItemIds.push(pendingId);
       continue;
     }
 
     const event = sourceEvent(
       batch,
-      action,
+      commitAction,
       createId('event'),
       timestamp,
       'plugin_action',
     );
     newEvents.push(event);
     newRecords.push(testRecordForEvent(event, createId('record'), timestamp));
-    existingDedupeKeys.add(action.dedupeKey);
+    existingDedupeKeys.add(commitAction.dedupeKey);
   }
 
   for (const item of allReviewItems) {
@@ -975,23 +1069,32 @@ export function commitBatch(
       continue;
     }
 
-    if (item.reviewDisposition === 'pending') {
+    const inspected = inspectProposalPayload(item);
+    const commitItem = {
+      ...item,
+      ...inspected.proposal,
+      payloadIssues: [...inspected.issues],
+    };
+
+    if (item.reviewDisposition === 'pending' || !inspected.complete) {
       const pendingId = createId('pending');
-      newPending.push(pendingFromProposal(batch, item, pendingId, timestamp));
+      newPending.push(
+        pendingFromProposal(batch, commitItem, pendingId, timestamp),
+      );
       pendingItemIds.push(pendingId);
       continue;
     }
 
-    if (existingDedupeKeys.has(item.dedupeKey)) {
-      rejectedProposalIds.push(item.proposalId);
+    if (existingDedupeKeys.has(commitItem.dedupeKey)) {
+      rejectedProposalIds.push(commitItem.proposalId);
       continue;
     }
 
-    const event = sourceEvent(batch, item, createId('event'), timestamp);
+    const event = sourceEvent(batch, commitItem, createId('event'), timestamp);
     newEvents.push(event);
     newRecords.push(testRecordForEvent(event, createId('record'), timestamp));
-    acceptedProposalIds.push(item.proposalId);
-    existingDedupeKeys.add(item.dedupeKey);
+    acceptedProposalIds.push(commitItem.proposalId);
+    existingDedupeKeys.add(commitItem.dedupeKey);
   }
 
   const committed = transitionBatch(

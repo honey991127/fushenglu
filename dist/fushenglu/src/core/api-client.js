@@ -8,6 +8,16 @@ import {
   FLAT_STORY_ANALYSIS_JSON_SCHEMA,
   parseAndConvertFlatAnalysis,
 } from './flat-analysis.js';
+import {
+  flattenAnalysisProposals,
+  inspectProposalPayload,
+  listIncompleteProposals,
+  markProposalUnresolved,
+  normalizeAnalysisPayloads,
+  repairedProposalIsGrounded,
+  replaceAnalysisProposal,
+  selectRelevantMessages,
+} from './proposal-repair.js';
 
 export const API_SETTINGS_SCHEMA_VERSION = 1;
 export const API_SETTINGS_STORAGE_KEY = 'fushenglu.apiSettings.v1';
@@ -371,6 +381,8 @@ changes 必須是陣列。每項 change 使用：
 沒有變化時回傳 {"schemaVersion":1,"changes":[]}。
 回憶、引用、傳聞、假設與夢境不可當作主線；story_time 請加入 timelineContext。
 所有權含糊、突破、新技能、新人物、新地點或衝突請降低 confidence 或標 major/critical。
+name、stage、status 等名稱必須逐字沿用本次輸入聊天中出現的原文；不得翻譯、改寫、泛化，
+不得使用其他聊天、其他角色卡、常見世界觀或模型記憶補造名稱。
 `.trim();
 
 const ANALYSIS_REPAIR_SYSTEM_PROMPT = `
@@ -385,6 +397,18 @@ const CORRECTION_SYSTEM_PROMPT = `
 {"schemaVersion":1,"changes":[]}
 changes 必須是陣列。每項包含 kind、operation、value、evidenceMessageRef、confidence、reason、severity、dedupeKey。
 evidenceMessageRef 使用 correction:<batchId>。不得直接修改資料、不得輸出 Markdown、不得虛構。
+`.trim();
+
+const SINGLE_PROPOSAL_REPAIR_SYSTEM_PROMPT = `
+你是浮生錄的單筆資料修復器。你只能根據本次提供的 currentChatMessages 修復一筆候選。
+只輸出 {"schemaVersion":1,"changes":[]}；changes 最多一項。
+規則：
+1. 不得使用其他聊天、其他角色卡、常見世界觀或模型記憶。
+2. 物品、貨幣、技能、境界、衣物與狀態名稱必須逐字出現在 currentChatMessages。
+3. 不得翻譯、改名、概括或補造名稱。
+4. evidenceMessageRef 必須使用 currentChatMessages 裡實際存在的 messageRef。
+5. 原文不足以確定時回傳空 changes，不要猜。
+6. 保持原候選的事實方向，只修補缺失或格式錯誤的欄位。
 `.trim();
 
 export class OpenAICompatibleClient {
@@ -602,6 +626,91 @@ export class OpenAICompatibleClient {
     return parseModelList(payload);
   }
 
+  async repairIncompleteAnalysis(result, messages, { batchId } = {}) {
+    let working = normalizeAnalysisPayloads(result);
+    const incomplete = listIncompleteProposals(working);
+
+    for (const item of incomplete) {
+      const relevantMessages = selectRelevantMessages(
+        messages,
+        item.proposal,
+      );
+      let replacement = null;
+
+      try {
+        const repairContent = await this.request(
+          'analysis',
+          [
+            {
+              role: 'system',
+              content: SINGLE_PROPOSAL_REPAIR_SYSTEM_PROMPT,
+            },
+            {
+              role: 'user',
+              content: JSON.stringify({
+                schemaVersion: 1,
+                batchId,
+                incompleteCandidate: item.proposal,
+                detectedIssues: item.issues,
+                currentChatMessages: relevantMessages,
+              }),
+            },
+          ],
+          {
+            jsonSchema: FLAT_STORY_ANALYSIS_JSON_SCHEMA,
+            maxOutputTokens: 768,
+            temperature: 0,
+          },
+        );
+        const repairResult = parseAndConvertFlatAnalysis(repairContent);
+        const candidates = flattenAnalysisProposals(repairResult);
+        const candidate =
+          candidates.find(
+            (proposal) => proposal.kind === item.proposal.kind,
+          ) ?? null;
+
+        if (candidate) {
+          const inspected = inspectProposalPayload({
+            ...candidate,
+            proposalId: item.proposal.proposalId,
+            dedupeKey: item.proposal.dedupeKey,
+          });
+
+          if (
+            inspected.complete &&
+            repairedProposalIsGrounded(
+              inspected.proposal,
+              relevantMessages,
+            )
+          ) {
+            replacement = {
+              ...inspected.proposal,
+              proposalId: item.proposal.proposalId,
+              dedupeKey: item.proposal.dedupeKey,
+              repairStatus: 'repaired_from_current_chat',
+            };
+          }
+        }
+      } catch (error) {
+        this.logger.warn('單筆候選自動修復失敗，改送待確認', {
+          batchId,
+          proposalId: item.proposal.proposalId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      working = replacement
+        ? replaceAnalysisProposal(
+            working,
+            item.proposal.proposalId,
+            replacement,
+          )
+        : markProposalUnresolved(working, item);
+    }
+
+    return working;
+  }
+
   async analyzeMessages(messages, { batchId } = {}) {
     const content = await this.request(
       'analysis',
@@ -647,6 +756,12 @@ export class OpenAICompatibleClient {
       );
       result = parseAndConvertFlatAnalysis(repairedContent);
     }
+
+    result = await this.repairIncompleteAnalysis(
+      result,
+      messages,
+      { batchId },
+    );
 
     const settings = this.settingsStore.load();
 
@@ -703,6 +818,18 @@ export class OpenAICompatibleClient {
       },
     );
 
-    return parseAndConvertFlatAnalysis(content);
+    const result = parseAndConvertFlatAnalysis(content);
+
+    return this.repairIncompleteAnalysis(
+      result,
+      [
+        {
+          messageRef: `correction:${batchId}`,
+          role: 'user',
+          content: text,
+        },
+      ],
+      { batchId },
+    );
   }
 }

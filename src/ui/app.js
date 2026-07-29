@@ -6,6 +6,10 @@ import {
 } from '../core/analysis-schema.js';
 import { createCharacterAction } from '../core/character-state.js';
 import {
+  analysisResultFromBatch,
+  listIncompleteProposals,
+} from '../core/proposal-repair.js';
+import {
   addDraftAction,
   beginTurnBatch,
   cancelBatch,
@@ -18,6 +22,7 @@ import {
   getResumableBatch,
   prepareBatchHandoff,
   recoverCertainActionsOnly,
+  refreshBatchAnalysis,
   resolvePendingItem,
   retryBatch,
   startBatchCommit,
@@ -1148,6 +1153,41 @@ export function mountFushengluApp({
   }
 
   async function finishCommit(batchId, startFromReview = true) {
+    let beforeCommit = await store.read();
+    let reviewBatch = getBatch(beforeCommit.state, batchId);
+
+    if (reviewBatch?.status === 'review_ready') {
+      const currentAnalysis = analysisResultFromBatch(reviewBatch);
+      const incomplete = listIncompleteProposals(currentAnalysis);
+
+      if (incomplete.length > 0) {
+        setStatus(
+          `正在依本聊天原文修復 ${incomplete.length} 筆不完整候選…`,
+          'neutral',
+        );
+        const repaired = await apiClient.repairIncompleteAnalysis(
+          currentAnalysis,
+          reviewBatch.inputMessages.map(
+            ({ messageRef, role, content }) => ({
+              messageRef,
+              role,
+              content,
+            }),
+          ),
+          { batchId: `${batchId}:precommit` },
+        );
+
+        await store.update((current) =>
+          refreshBatchAnalysis(
+            current,
+            batchId,
+            repaired,
+            now(),
+          ),
+        );
+      }
+    }
+
     if (startFromReview) {
       await store.update((current) => startBatchCommit(current, batchId, now()));
     }
