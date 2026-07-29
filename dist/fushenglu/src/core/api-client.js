@@ -339,7 +339,7 @@ function structuredOutputUnsupported(error) {
     return false;
   }
 
-  return /response.?format|json.?schema|structured|unknown parameter|unsupported/i.test(
+  return /response.?format|json.?schema|response.?schema|generation.?config|structured|unknown parameter|unknown name|invalid.?argument|proto field|not repeating|unsupported/i.test(
     error.message,
   );
 }
@@ -427,6 +427,7 @@ export class OpenAICompatibleClient {
 
     this.settingsStore = settingsStore;
     this.fetchImpl = fetchImpl;
+    this.structuredOutputUnavailable = false;
     this.logger = createSafeLogger(logger, () => {
       try {
         return [this.settingsStore.load().apiKey];
@@ -506,6 +507,10 @@ export class OpenAICompatibleClient {
       return performRequest(false);
     }
 
+    if (this.structuredOutputUnavailable) {
+      return performRequest(false);
+    }
+
     try {
       return await performRequest(true);
     } catch (error) {
@@ -513,7 +518,8 @@ export class OpenAICompatibleClient {
         throw error;
       }
 
-      this.logger.warn('模型不支援 structured output，改用 JSON 解析與本地 Schema 驗證', {
+      this.structuredOutputUnavailable = true;
+      this.logger.warn('模型或中轉站不支援 structured output，改用 JSON 解析與本地 Schema 驗證', {
         status: error.status,
       });
       return performRequest(false);

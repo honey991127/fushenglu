@@ -31,7 +31,7 @@ const FLAT_PROPOSAL_SCHEMA = {
     kind: { type: 'string' },
     operation: { type: 'string' },
     value: {},
-    confidence: { type: ['number', 'string'] },
+    confidence: { type: 'number' },
     evidenceMessageRef: { type: 'string' },
     evidenceQuote: { type: 'string' },
     reason: { type: 'string' },

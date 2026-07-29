@@ -40,9 +40,9 @@ test('表單資料在停用控制項前捕捉，並傳入正確保存與載入�
   assert.match(saveSection, /catch \(error\)[\s\S]*?setStatus\(/);
 });
 
-test('插件版本與 manifest 統一為 0.3.6', () => {
-  assert.equal(packageJson.version, '0.3.6');
-  assert.equal(manifestJson.version, '0.3.6');
+test('插件版本與 manifest 統一為 0.3.7', () => {
+  assert.equal(packageJson.version, '0.3.7');
+  assert.equal(manifestJson.version, '0.3.7');
 });
 
 test('未載入模型時三個模型輸入框仍是可見的自訂 combo box', () => {
