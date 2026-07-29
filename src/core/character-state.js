@@ -1,395 +1,141 @@
-export const CHARACTER_STATE_SCHEMA_VERSION = 1;
+// The reducer deliberately has no host or Node dependencies: it also runs in iOS WebViews.
+export const CHARACTER_STATE_SCHEMA_VERSION = 2;
 
-const OWNERSHIP_STATUSES = new Set([
-  'owned',
-  'gifted',
-  'borrowed',
-  'temporary',
-  'unknown',
-]);
+const OWNERSHIP = new Set(['owned', 'gifted', 'borrowed', 'temporary', 'unknown']);
+const MAIN = new Set(['main', undefined, null]);
 
-function clone(value) {
-  return typeof structuredClone === 'function'
-    ? structuredClone(value)
-    : JSON.parse(JSON.stringify(value));
-}
-
-function text(value, field) {
-  const normalized = String(value ?? '').trim();
-
-  if (!normalized) {
-    throw new TypeError(`${field} is required`);
-  }
-
-  return normalized;
-}
-
-function nonNegative(value, field) {
-  const number = Number(value);
-
-  if (!Number.isFinite(number) || number < 0) {
-    throw new TypeError(`${field} must be a non-negative number`);
-  }
-
-  return number;
-}
-
-function optionalText(value) {
-  return value === null || value === undefined || String(value).trim() === ''
-    ? null
-    : String(value).trim();
-}
+function copy(value) { return typeof structuredClone === 'function' ? structuredClone(value) : JSON.parse(JSON.stringify(value)); }
+function clean(value) { return String(value ?? '').trim(); }
+function optional(value) { const result = clean(value); return result || null; }
+function number(value) { const result = Number(value); return Number.isFinite(result) ? result : null; }
+function eventOrder(event, index) { return Number.isFinite(Number(event.storyOrder)) ? Number(event.storyOrder) : Number.isFinite(Number(event.sourceMessageIndex)) ? Number(event.sourceMessageIndex) : index; }
+function stableHash(value) { let hash = 0x811c9dc5; for (const char of String(value)) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 0x01000193); } return (hash >>> 0).toString(16); }
 
 export function createCharacterState() {
   return {
     schemaVersion: CHARACTER_STATE_SCHEMA_VERSION,
-    story: {
-      schemaVersion: 1,
-      time: null,
-      place: null,
-      ongoingStatuses: [],
-      lastConfirmedChange: null,
-    },
-    inventory: {
-      schemaVersion: 1,
-      currencies: [],
-      items: [],
-    },
-    wardrobe: {
-      schemaVersion: 1,
-      garments: [],
-      currentOutfit: null,
-      savedOutfits: [],
-    },
-    skills: {
-      schemaVersion: 1,
-      entries: [],
-    },
-    cultivation: {
-      schemaVersion: 1,
-      current: null,
-      milestones: [],
-      breakthroughs: [],
-    },
+    story: { schemaVersion: 2, currentTime: null, currentScenePlace: null, timelineHistory: [], time: null, place: null, ongoingStatuses: [], lastConfirmedChange: null },
+    entities: { schemaVersion: 1, byId: {}, playerEntityId: 'entity:player' },
+    places: { schemaVersion: 1, entries: [] },
+    inventory: { schemaVersion: 1, currencies: [], items: [] },
+    wardrobe: { schemaVersion: 1, garments: [], currentOutfit: null, savedOutfits: [] },
+    skills: { schemaVersion: 1, entries: [] },
+    cultivation: { schemaVersion: 1, current: null, milestones: [], breakthroughs: [] },
   };
 }
 
-function findByName(items, name) {
-  return items.find((item) => item.name === name) ?? null;
-}
-
-function eventSummary(event) {
-  return {
-    schemaVersion: 1,
-    eventId: event.eventId,
-    batchId: event.batchId,
-    kind: event.kind,
-    operation: event.operation,
-    at: event.createdAt,
-  };
-}
-
-function eventSource(event) {
-  return {
-    schemaVersion: 1,
-    eventId: event.eventId,
-    source: optionalText(event.value?.source) ?? optionalText(event.value?.sourceEvent),
-    at: event.createdAt,
-  };
-}
-
-function applyCurrency(character, event) {
+function ensureEntity(state, event) {
   const value = event.value ?? {};
-  const requestedName = text(value.name ?? value.currency, 'currency name');
-  const name = /(?:上|中|下|極)品靈石/.test(requestedName)
-    ? '靈石'
-    : requestedName;
-  const existing = findByName(character.inventory.currencies, name);
-  const amount = Number(value.amount ?? value.quantity ?? value.value ?? 0);
-  let nextAmount;
-
-  if (event.operation === 'add') {
-    nextAmount = (existing?.amount ?? 0) + nonNegative(amount, 'currency amount');
-  } else if (event.operation === 'subtract') {
-    nextAmount = (existing?.amount ?? 0) - nonNegative(amount, 'currency amount');
-  } else if (event.operation === 'set') {
-    nextAmount = nonNegative(amount, 'currency amount');
-  } else {
-    return;
-  }
-
-  if (nextAmount < 0) {
-    throw new TypeError('currency amount cannot be below zero');
-  }
-
-  const entry = {
-    schemaVersion: 1,
-    name,
-    amount: nextAmount,
-    updatedAt: event.createdAt,
-    sourceEventId: event.eventId,
+  const requestedType = clean(value.entityType ?? event.entityType);
+  const isPlayer = requestedType === 'player' || value.owner === 'player' || value.subject === 'player' || event.subjectEntityId === 'entity:player';
+  const name = optional(value.canonicalName ?? value.subjectName ?? value.person ?? value.name) ?? (isPlayer ? '玩家' : '未知人物');
+  const entityId = clean(event.subjectEntityId ?? value.entityId) || (isPlayer ? 'entity:player' : `entity:npc:${stableHash(name)}`);
+  const old = state.entities.byId[entityId];
+  const aliases = new Set([...(old?.aliases ?? []), name, ...((Array.isArray(value.aliases) ? value.aliases : []).map(clean).filter(Boolean))]);
+  state.entities.byId[entityId] = {
+    schemaVersion: 1, entityId, entityType: isPlayer ? 'player' : (requestedType || old?.entityType || 'npc'), canonicalName: old?.canonicalName ?? name,
+    aliases: [...aliases], aliasEvidence: [...(old?.aliasEvidence ?? []), ...(event.evidenceQuote ? [{ eventId: event.eventId, quote: event.evidenceQuote }] : [])],
+    currentLocation: old?.currentLocation ?? null, durableStatuses: old?.durableStatuses ?? [], transientState: old?.transientState ?? null,
+    relationships: old?.relationships ?? {}, possessions: old?.possessions ?? [], lastUpdatedStoryOrder: event.storyOrder ?? old?.lastUpdatedStoryOrder ?? null,
   };
-  character.inventory.currencies = existing
-    ? character.inventory.currencies.map((item) => (item.name === name ? entry : item))
-    : [...character.inventory.currencies, entry];
+  return entityId;
 }
 
-function applyInventory(character, event) {
-  const value = event.value ?? {};
-  const name = text(value.name, 'item name');
-  const existing = findByName(character.inventory.items, name);
-  const amount = Number(value.quantity ?? value.amount ?? value.value ?? 0);
-  let quantity;
-
-  if (event.operation === 'add') {
-    quantity = (existing?.quantity ?? 0) + nonNegative(amount, 'item quantity');
-  } else if (event.operation === 'subtract') {
-    quantity = (existing?.quantity ?? 0) - nonNegative(amount, 'item quantity');
-  } else if (event.operation === 'set') {
-    quantity = nonNegative(amount, 'item quantity');
-  } else {
-    return;
-  }
-
-  if (quantity < 0) {
-    throw new TypeError('item quantity cannot be below zero');
-  }
-
-  const entry = {
-    schemaVersion: 1,
-    name,
-    quantity,
-    category: optionalText(value.category) ?? existing?.category ?? 'other',
-    source: optionalText(value.source) ?? existing?.source ?? null,
-    updatedAt: event.createdAt,
-    sourceEventId: event.eventId,
-  };
-  character.inventory.items = existing
-    ? character.inventory.items.map((item) => (item.name === name ? entry : item))
-    : [...character.inventory.items, entry];
+function upsertAmount(items, name, amount, key, event) {
+  const index = items.findIndex((item) => item.name === name);
+  const old = index >= 0 ? items[index] : null;
+  const next = event.operation === 'set' ? amount : (old?.[key] ?? 0) + (event.operation === 'subtract' ? -amount : amount);
+  if (next < 0) throw new RangeError(`${name} quantity cannot be below zero`);
+  const entry = { schemaVersion: 1, ...(old ?? {}), name, [key]: next, updatedAt: event.createdAt, sourceEventId: event.eventId };
+  if (index < 0) items.push(entry); else items[index] = entry;
 }
 
-function applyWardrobe(character, event) {
+function applyAsset(state, event) {
   const value = event.value ?? {};
+  const player = state.entities.playerEntityId;
+  const owner = clean(event.subjectEntityId ?? value.ownerEntityId ?? value.owner ?? value.subject);
+  if (owner && owner !== player && owner !== 'player') return; // Mentioned/NPC property never becomes player inventory.
+  if (!MAIN.has(event.timelineContext) || value.negated || value.quantityUnknown) return;
+  const name = optional(value.name ?? value.item ?? value.currency);
+  const amount = number(value.quantity ?? value.amount ?? value.value);
+  if (!name || amount === null || !['add', 'subtract', 'set'].includes(event.operation)) return;
+  if (event.kind === 'currency') upsertAmount(state.inventory.currencies, name, amount, 'amount', event);
+  else upsertAmount(state.inventory.items, name, amount, 'quantity', event);
+}
 
-  if (event.operation === 'wear') {
-    const garmentNames = Array.isArray(value.garments)
-      ? value.garments.map((item) => String(item?.name ?? item).trim()).filter(Boolean)
-      : [];
-    const garments = garmentNames.map((name) => findByName(character.wardrobe.garments, name));
-
-    if (garments.length === 0 || garments.some((item) => !item || item.ownershipStatus !== 'owned')) {
-      throw new TypeError('only explicitly owned garments can be worn');
+function applyPerson(state, event) {
+  const value = event.value ?? {};
+  const id = ensureEntity(state, event);
+  const entity = state.entities.byId[id];
+  if (event.kind === 'person') {
+    if (value.location || value.place) entity.currentLocation = optional(value.location ?? value.place);
+    if (value.relationship && value.targetEntityId) entity.relationships[value.targetEntityId] = { dimension: optional(value.dimension) ?? 'relation', value: value.relationship, storyOrder: event.storyOrder };
+    if (value.status) {
+      if (value.transient) entity.transientState = { value: value.status, eventId: event.eventId, storyOrder: event.storyOrder };
+      else if (event.operation === 'clear' || event.operation === 'resolve') entity.durableStatuses = entity.durableStatuses.filter((status) => status !== value.status);
+      else entity.durableStatuses = [...new Set([...entity.durableStatuses, value.status])];
     }
-
-    character.wardrobe.currentOutfit = {
-      schemaVersion: 1,
-      name: optionalText(value.name),
-      garmentNames,
-      sourceEventId: event.eventId,
-      updatedAt: event.createdAt,
-    };
-    return;
   }
-
-  if (event.operation === 'save_outfit') {
-    const name = text(value.name, 'outfit name');
-    const garmentNames = Array.isArray(value.garments)
-      ? value.garments.map((item) => String(item?.name ?? item).trim()).filter(Boolean)
-      : character.wardrobe.currentOutfit?.garmentNames ?? [];
-    const outfit = {
-      schemaVersion: 1,
-      name,
-      garmentNames,
-      sourceEventId: event.eventId,
-      updatedAt: event.createdAt,
-    };
-    character.wardrobe.savedOutfits = character.wardrobe.savedOutfits.some(
-      (item) => item.name === name,
-    )
-      ? character.wardrobe.savedOutfits.map((item) => (item.name === name ? outfit : item))
-      : [...character.wardrobe.savedOutfits, outfit];
-    return;
-  }
-
-  if (!['add', 'set', 'update'].includes(event.operation)) {
-    return;
-  }
-
-  const name = text(value.name, 'garment name');
-  const ownershipStatus = value.ownershipStatus ?? 'owned';
-
-  if (!OWNERSHIP_STATUSES.has(ownershipStatus)) {
-    throw new TypeError('unknown garment ownership status');
-  }
-
-  const existing = findByName(character.wardrobe.garments, name);
-  const garment = {
-    schemaVersion: 1,
-    name,
-    part: text(value.part ?? existing?.part ?? 'other', 'garment part'),
-    description: optionalText(value.description) ?? existing?.description ?? null,
-    source: optionalText(value.source) ?? existing?.source ?? null,
-    ownershipStatus,
-    sourceEventId: event.eventId,
-    updatedAt: event.createdAt,
-  };
-  character.wardrobe.garments = existing
-    ? character.wardrobe.garments.map((item) => (item.name === name ? garment : item))
-    : [...character.wardrobe.garments, garment];
+  entity.lastUpdatedStoryOrder = event.storyOrder ?? entity.lastUpdatedStoryOrder;
 }
 
-function applySkill(character, event) {
+function applyStory(state, event) {
   const value = event.value ?? {};
-  const name = text(value.name, 'skill name');
-  const existing = findByName(character.skills.entries, name);
-  const amount = Number(value.proficiency ?? value.value ?? value.amount ?? 0);
-  let proficiency;
-
-  if (event.operation === 'add') {
-    proficiency = (existing?.proficiency ?? 0) + nonNegative(amount, 'skill proficiency');
-  } else if (event.operation === 'set') {
-    proficiency = nonNegative(amount, 'skill proficiency');
-  } else {
-    return;
-  }
-
-  if (existing && proficiency < existing.proficiency) {
-    throw new TypeError('skill proficiency cannot automatically decline');
-  }
-
-  const entry = {
-    schemaVersion: 1,
-    name,
-    category: optionalText(value.category) ?? existing?.category ?? 'other',
-    proficiency,
-    sourceEvent: eventSource(event),
-    recentChange: eventSummary(event),
-    updatedAt: event.createdAt,
-  };
-  character.skills.entries = existing
-    ? character.skills.entries.map((item) => (item.name === name ? entry : item))
-    : [...character.skills.entries, entry];
-}
-
-function applyCultivation(character, event) {
-  if (!['confirm_milestone', 'record_breakthrough', 'set'].includes(event.operation)) {
-    return;
-  }
-
-  const value = event.value ?? {};
-  const stage = text(value.stage ?? value.name, 'cultivation stage');
-  const current = {
-    schemaVersion: 1,
-    stage,
-    progressDescription: optionalText(value.progressDescription ?? value.progress),
-    sourceEventId: event.eventId,
-    updatedAt: event.createdAt,
-  };
-  character.cultivation.current = current;
-  const milestone = {
-    schemaVersion: 1,
-    name: optionalText(value.milestoneName) ?? stage,
-    stage,
-    progressDescription: current.progressDescription,
-    eventId: event.eventId,
-    confirmedAt: event.createdAt,
-  };
-  character.cultivation.milestones.push(milestone);
-
-  if (event.operation === 'record_breakthrough') {
-    character.cultivation.breakthroughs.push({
-      ...milestone,
-      description: optionalText(value.description),
-    });
-  }
-}
-
-function applyStory(character, event) {
-  const value = event.value ?? {};
-
   if (event.kind === 'story_time') {
-    character.story.time = optionalText(value.time ?? value.description ?? value.label) ?? JSON.stringify(value);
-  } else if (event.kind === 'place') {
-    character.story.place = optionalText(value.name ?? value.place ?? value.description) ?? JSON.stringify(value);
-  } else if (event.kind === 'other' && event.operation === 'set_status') {
-    const status = text(value.status ?? value.name, 'status');
-    character.story.ongoingStatuses = [...new Set([...character.story.ongoingStatuses, status])];
-  } else {
-    return;
+    const time = optional(value.time ?? value.canonicalDisplay ?? value.description ?? value.label);
+    if (!time) return;
+    state.story.timelineHistory.push({ schemaVersion: 1, eventId: event.eventId, time, timelineContext: event.timelineContext ?? 'unknown', storyOrder: event.storyOrder });
+    if (MAIN.has(event.timelineContext)) { state.story.currentTime = time; state.story.time = time; }
   }
+  if (event.kind === 'place') {
+    const place = optional(value.name ?? value.place ?? value.description);
+    if (!place) return;
+    if (!state.places.entries.some((entry) => entry.name === place)) state.places.entries.push({ schemaVersion: 1, name: place, eventId: event.eventId });
+    if (MAIN.has(event.timelineContext) && !event.subjectEntityId && !value.subjectEntityId) { state.story.currentScenePlace = place; state.story.place = place; }
+  }
+}
 
-  character.story.lastConfirmedChange = eventSummary(event);
+function applyOther(state, event) {
+  const value = event.value ?? {};
+  if (event.kind === 'wardrobe') {
+    if (event.operation === 'wear') {
+      const garmentNames = Array.isArray(value.garments) ? value.garments.map((item) => clean(item?.name ?? item)).filter(Boolean) : [];
+      if (garmentNames.length && garmentNames.every((name) => state.wardrobe.garments.some((garment) => garment.name === name && garment.ownershipStatus === 'owned'))) state.wardrobe.currentOutfit = { schemaVersion: 1, name: optional(value.name), garmentNames, sourceEventId: event.eventId, updatedAt: event.createdAt };
+      return;
+    }
+    const name = optional(value.name); if (!name || !['add', 'set', 'update'].includes(event.operation)) return;
+    const ownershipStatus = value.ownershipStatus ?? 'owned'; if (!OWNERSHIP.has(ownershipStatus)) return;
+    const entry = { schemaVersion: 1, name, part: optional(value.part) ?? 'other', ownershipStatus, updatedAt: event.createdAt, sourceEventId: event.eventId };
+    const index = state.wardrobe.garments.findIndex((garment) => garment.name === name); if (index < 0) state.wardrobe.garments.push(entry); else state.wardrobe.garments[index] = entry;
+  }
+  if (event.kind === 'skill') { const name = optional(value.name); const proficiency = number(value.proficiency ?? value.value ?? value.amount); if (name && proficiency !== null) { const index = state.skills.entries.findIndex((skill) => skill.name === name); const old = state.skills.entries[index]; const next = event.operation === 'add' ? (old?.proficiency ?? 0) + proficiency : proficiency; if (index < 0) state.skills.entries.push({ schemaVersion: 1, name, proficiency: next }); else state.skills.entries[index] = { ...old, proficiency: next }; } }
+  if (event.kind === 'cultivation') { const stage = optional(value.stage); if (stage) state.cultivation.current = { schemaVersion: 1, stage, eventId: event.eventId, confirmedAt: event.createdAt }; }
 }
 
 export function applyCharacterEvent(character, event) {
-  const next = clone(character);
-
-  if (event.kind === 'currency') {
-    applyCurrency(next, event);
-  } else if (event.kind === 'inventory') {
-    applyInventory(next, event);
-  } else if (event.kind === 'wardrobe') {
-    applyWardrobe(next, event);
-  } else if (event.kind === 'skill') {
-    applySkill(next, event);
-  } else if (event.kind === 'cultivation') {
-    applyCultivation(next, event);
-  } else {
-    applyStory(next, event);
-  }
-
-  if (!next.story.lastConfirmedChange && ['currency', 'inventory', 'wardrobe', 'skill', 'cultivation'].includes(event.kind)) {
-    next.story.lastConfirmedChange = eventSummary(event);
-  }
-
-  return next;
+  const state = copy(character);
+  if (!event || event.deletedAt !== null) return state;
+  if (['inventory', 'currency'].includes(event.kind)) applyAsset(state, event);
+  else if (event.kind === 'person') applyPerson(state, event);
+  else if (['story_time', 'place'].includes(event.kind)) applyStory(state, event);
+  else applyOther(state, event);
+  state.story.lastConfirmedChange = { schemaVersion: 1, eventId: event.eventId, batchId: event.batchId, kind: event.kind, operation: event.operation, at: event.createdAt };
+  return state;
 }
 
 export function rebuildCharacterState(events = []) {
-  return events
-    .filter((event) => event?.deletedAt === null)
-    .sort((left, right) => String(left.createdAt).localeCompare(String(right.createdAt)))
-    .reduce((character, event) => applyCharacterEvent(character, event), createCharacterState());
+  return events.filter((event) => event?.deletedAt === null).map((event, index) => ({ event, index })).sort((a, b) => eventOrder(a.event, a.index) - eventOrder(b.event, b.index) || String(a.event.eventId).localeCompare(String(b.event.eventId))).reduce((state, item) => applyCharacterEvent(state, item.event), createCharacterState());
 }
 
-export function actionRequiresPending(state, action) {
-  if (action.kind === 'wardrobe') {
-    const ownership = action.value?.ownershipStatus;
-    return ['gifted', 'borrowed', 'temporary', 'unknown'].includes(ownership);
-  }
-
-  if (action.kind === 'cultivation') {
-    return true;
-  }
-
-  if (action.kind === 'skill') {
-    const name = String(action.value?.name ?? '').trim();
-    const skill = state.character?.skills?.entries?.find((item) => item.name === name);
-    const amount = Number(action.value?.proficiency ?? action.value?.value ?? action.value?.amount ?? 0);
-    const target = action.operation === 'add' ? (skill?.proficiency ?? 0) + amount : amount;
-    return !skill || !Number.isFinite(target) || Math.abs(target - skill.proficiency) > 5;
-  }
-
+// Pending is about ambiguity/conflict, not importance or proposal kind.
+export function actionRequiresPending(_state, action) {
+  const value = action.value ?? {};
+  if (value.identityAmbiguous || value.ownershipAmbiguous || value.conflict || value.inferred || value.quantityUnknown || value.negatedAmbiguous) return true;
+  if (['memory', 'quote', 'dream', 'hypothetical', 'unknown'].includes(action.timelineContext) && ['inventory', 'currency'].includes(action.kind)) return true;
   return false;
 }
 
-export function createCharacterAction({
-  actionId,
-  kind,
-  operation,
-  value,
-  dedupeKey,
-  timestamp = new Date().toISOString(),
-}) {
-  return {
-    schemaVersion: 1,
-    actionId: text(actionId, 'actionId'),
-    kind: text(kind, 'kind'),
-    operation: text(operation, 'operation'),
-    value: clone(value ?? {}),
-    dedupeKey: text(dedupeKey, 'dedupeKey'),
-    selected: true,
-    createdAt: timestamp,
-  };
+export function createCharacterAction({ actionId, kind, operation, value, dedupeKey, timestamp = new Date().toISOString() }) {
+  if (!clean(actionId) || !clean(kind) || !clean(operation) || !clean(dedupeKey)) throw new TypeError('character action requires id, kind, operation and dedupeKey');
+  return { schemaVersion: 2, actionId: clean(actionId), kind: clean(kind), operation: clean(operation), value: copy(value ?? {}), dedupeKey: clean(dedupeKey), selected: true, createdAt: timestamp };
 }

@@ -267,7 +267,7 @@ test('待確認的拒絕只記錄決定，不修改正式測試狀態', () => {
     proposalId: 'person-1',
     kind: 'person',
     operation: 'create',
-    value: { name: '某同門' },
+    value: { name: '某同門', identityAmbiguous: true },
     severity: 'major',
     dedupeKey: 'person:someone',
   });
@@ -310,12 +310,12 @@ test('自然語言修正必須經最後確認才建立修正事件', () => {
   assert.equal(state.testState.records[0].value.amount, 19);
 });
 
-test('回憶中的故事時間預設進待確認，不直接更新正式資料', () => {
+test('回憶中的故事時間保留於歷史，不覆蓋主線目前時間', () => {
   const memoryTime = proposal({
     proposalId: 'time-1',
     kind: 'story_time',
     operation: 'advance',
-    value: { day: 5 },
+    value: { time: '第五日' },
     severity: 'minor',
     timelineContext: 'memory',
     dedupeKey: 'story-time:memory:day-5',
@@ -325,10 +325,12 @@ test('回憶中的故事時間預設進待確認，不直接更新正式資料',
   });
   const batch = getBatch(state, 'batch-1');
 
-  assert.equal(batch.detectedChanges[0].reviewDisposition, 'pending');
+  assert.equal(batch.detectedChanges[0].reviewDisposition, 'apply');
   state = fullyCommit(state);
-  assert.equal(state.testState.records.length, 0);
-  assert.equal(state.pendingItems.length, 1);
+  assert.equal(state.testState.records.length, 1);
+  assert.equal(state.pendingItems.length, 0);
+  assert.equal(state.character.story.currentTime, null);
+  assert.equal(state.character.story.timelineHistory[0].time, '第五日');
 });
 
 test('App 重開後可恢復 analysis_pending 未完成批次', () => {

@@ -4,7 +4,7 @@ import {
   rebuildCharacterState,
 } from './character-state.js';
 
-export const CHAT_STATE_SCHEMA_VERSION = 3;
+export const CHAT_STATE_SCHEMA_VERSION = 4;
 
 const BATCH_STATUSES = new Set([
   'draft',
@@ -89,6 +89,18 @@ function createLegacyState() {
   };
 }
 
+function createHistoryImportProgress() {
+  return {
+    schemaVersion: 1,
+    pipelineVersion: 2,
+    branchFingerprint: '',
+    messageRefsHash: '',
+    chunkBoundaries: [],
+    completedChunkIndexes: [],
+    updatedAt: null,
+  };
+}
+
 export function createChatState(timestamp = new Date().toISOString()) {
   requireTimestamp(timestamp);
 
@@ -103,6 +115,7 @@ export function createChatState(timestamp = new Date().toISOString()) {
     handoffItems: [],
     committedBatchIds: [],
     character: createCharacterState(),
+    historyImportProgress: createHistoryImportProgress(),
     testState: createTestState(),
     legacy: createLegacyState(),
   };
@@ -267,16 +280,43 @@ function normalizeV2(rawState) {
 function normalizeV3(rawState) {
   const normalized = normalizeV2(rawState);
 
-  if (!rawState.character || rawState.character.schemaVersion !== CHARACTER_STATE_SCHEMA_VERSION) {
-    throw new ChatStateMigrationError('character.schemaVersion must be 1');
+  if (!rawState.character || ![1, CHARACTER_STATE_SCHEMA_VERSION].includes(rawState.character.schemaVersion)) {
+    throw new ChatStateMigrationError('character.schemaVersion 無效');
   }
 
   const rebuiltCharacter = rebuildCharacterState(normalized.events);
 
   return {
     ...normalized,
-    schemaVersion: CHAT_STATE_SCHEMA_VERSION,
+    schemaVersion: 3,
     character: rebuiltCharacter,
+  };
+}
+
+function migrateV3State(rawState) {
+  const normalized = normalizeV3(rawState);
+  return {
+    ...normalized,
+    schemaVersion: CHAT_STATE_SCHEMA_VERSION,
+    // V3 only stored chunk counts; it is unsafe after a branch/edit/pipeline change.
+    historyImportProgress: createHistoryImportProgress(),
+    character: rebuildCharacterState(normalized.events),
+  };
+}
+
+function normalizeV4(rawState) {
+  const migrated = migrateV3State({ ...rawState, schemaVersion: 3 });
+  const progress = rawState.historyImportProgress ?? createHistoryImportProgress();
+  if (!progress || progress.schemaVersion !== 1 || !Array.isArray(progress.chunkBoundaries) || !Array.isArray(progress.completedChunkIndexes)) {
+    throw new ChatStateMigrationError('historyImportProgress 格式無效');
+  }
+  return {
+    ...migrated,
+    historyImportProgress: {
+      ...createHistoryImportProgress(),
+      ...clone(progress),
+      pipelineVersion: 2,
+    },
   };
 }
 
@@ -287,6 +327,7 @@ function migrateV2State(rawState) {
     ...normalized,
     schemaVersion: CHAT_STATE_SCHEMA_VERSION,
     character: rebuildCharacterState(normalized.events),
+    historyImportProgress: createHistoryImportProgress(),
   };
 }
 
@@ -342,6 +383,15 @@ export function migrateChatState(rawState, timestamp = new Date().toISOString())
     };
   }
 
+  if (sourceVersion === 3) {
+    return {
+      state: migrateV3State(rawState),
+      created: false,
+      migrated: true,
+      fromVersion: sourceVersion,
+    };
+  }
+
   if (sourceVersion < CHAT_STATE_SCHEMA_VERSION) {
     return {
       state: migrateLegacyState(rawState, sourceVersion, timestamp),
@@ -352,7 +402,7 @@ export function migrateChatState(rawState, timestamp = new Date().toISOString())
   }
 
   return {
-    state: normalizeV3(rawState),
+    state: normalizeV4(rawState),
     created: false,
     migrated: false,
     fromVersion: CHAT_STATE_SCHEMA_VERSION,

@@ -1067,12 +1067,14 @@ export function mountFushengluApp({
         : batch.source === 'history_import'
           ? await analyzeHistoryImportBatch(batch)
           : await apiClient.analyzeMessages(
-              batch.inputMessages.map(({ messageRef, role, content }) => ({
+              batch.inputMessages.map(({ messageRef, role, content, speakerName, index }) => ({
                 messageRef,
                 role,
                 content,
+                speakerName,
+                index,
               })),
-              { batchId },
+              { batchId, identityContext: batch.identityContext },
             );
       await store.update((current) =>
         completeBatchAnalysis(current, batchId, analysis, now()),
@@ -1091,6 +1093,7 @@ export function mountFushengluApp({
       beginTurnBatch(current, context.messages, {
         batchId,
         timestamp: now(),
+        identityContext: context.identityContext,
       }).state,
     );
     currentScreen = 'review';
@@ -1105,6 +1108,7 @@ export function mountFushengluApp({
         timestamp: now(),
         source: 'history_import',
         forceAllMessages: true,
+        identityContext: context.identityContext,
       }).state,
     );
     currentScreen = 'review';

@@ -4,6 +4,7 @@ import {
   validateChatState,
 } from '../core/chat-state.js';
 import {
+  buildIdentityContext,
   buildHandoffInjection,
   consumeNextGeneration,
   recordHandoffInjection,
@@ -187,6 +188,10 @@ export class TauriTavernChatStateStore {
     return clone(context.chat);
   }
 
+  getIdentityContext() {
+    return buildIdentityContext(requireCapabilities(this.root));
+  }
+
   async read() {
     const context = requireCapabilities(this.root);
     const chatId = getChatId(context);
@@ -214,6 +219,7 @@ export class TauriTavernChatStateStore {
       chatId,
       state: clone(result.state),
       messages: clone(context.chat),
+      identityContext: buildIdentityContext(context),
     };
   }
 
@@ -234,6 +240,7 @@ export class TauriTavernChatStateStore {
       const proposed = await updater(clone(current), {
         chatId,
         messages: clone(context.chat),
+        identityContext: buildIdentityContext(context),
       });
       const state = validateChatState(proposed, this.now());
       context.chatMetadata[CHAT_METADATA_KEY] = state;

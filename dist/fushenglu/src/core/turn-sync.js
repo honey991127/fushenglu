@@ -142,6 +142,25 @@ function normalizeContent(message) {
   return '';
 }
 
+function normalizeSpeakerName(message) {
+  const name = message?.name ?? message?.speaker ?? message?.speaker_name ?? message?.extra?.speaker;
+  return typeof name === 'string' && name.trim() ? name.trim() : null;
+}
+
+export function buildIdentityContext(context = {}) {
+  const character = Array.isArray(context.characters) && Number.isInteger(context.characterId)
+    ? context.characters[context.characterId] : null;
+  const playerName = [context.userName, context.user_name, context.name1, context.persona?.name].find((name) => typeof name === 'string' && name.trim()) ?? null;
+  const cardName = [character?.name, context.name2, context.characterName].find((name) => typeof name === 'string' && name.trim()) ?? null;
+  const groups = Array.isArray(context.groupMembers) ? context.groupMembers : Array.isArray(context.groups) ? context.groups : [];
+  return {
+    schemaVersion: 1,
+    player: playerName ? { canonicalName: playerName.trim(), aliases: [playerName.trim()] } : null,
+    cardCharacter: cardName ? { canonicalName: cardName.trim(), description: typeof character?.description === 'string' ? character.description : null } : null,
+    groupMembers: groups.map((member) => typeof member === 'string' ? member : member?.name).filter((name) => typeof name === 'string' && name.trim()).map((name) => name.trim()),
+  };
+}
+
 function stableMessageId(message) {
   const candidates = [
     message?.id,
@@ -232,6 +251,7 @@ export function normalizeChatMessages(rawMessages = []) {
       schemaVersion: 1,
       index,
       role,
+      speakerName: normalizeSpeakerName(message),
       content,
       stableMessageId: stableId,
       swipeId,
@@ -354,7 +374,7 @@ export function createDraftTestAction(
 }
 
 export function addDraftAction(state, action, timestamp = new Date().toISOString()) {
-  if (!action || action.schemaVersion !== 1 || typeof action.actionId !== 'string') {
+  if (!action || ![1, 2].includes(action.schemaVersion) || typeof action.actionId !== 'string') {
     throw new TypeError('暫存操作格式無效');
   }
 
@@ -376,6 +396,7 @@ export function beginTurnBatch(
     source = 'turn',
     correctionText = null,
     forceAllMessages = false,
+    identityContext = null,
   } = {},
 ) {
   requireTimestamp(timestamp);
@@ -411,6 +432,7 @@ export function beginTurnBatch(
     outcome: null,
     correctionText,
     inputMessages: clone(detected.messages),
+    identityContext: clone(identityContext ?? { schemaVersion: 1, player: null, cardCharacter: null, groupMembers: [] }),
     inputSlotKeys: detected.messages.map((message) => message.slotKey),
     sourceMessageRefs: detected.messages.map((message) => message.messageRef),
     branchFingerprint: detected.branchFingerprint,
@@ -453,31 +475,32 @@ export function beginTurnBatch(
   };
 }
 
-function isMajorProposal(proposal, uncertain) {
-  if (uncertain || ['major', 'critical'].includes(proposal.severity)) {
-    return true;
-  }
-
-  if (['person', 'place'].includes(proposal.kind)) {
-    return true;
-  }
-
-  if (
-    ['skill', 'cultivation'].includes(proposal.kind) &&
-    /new|create|learn|breakthrough|unlock|新增|習得|突破/i.test(proposal.operation)
-  ) {
-    return true;
-  }
-
-  return proposal.kind === 'story_time' && proposal.timelineContext !== 'main';
-}
-
 function defaultDisposition(proposal, uncertain) {
-  if (isMajorProposal(proposal, uncertain) || proposal.confidence < 0.8) {
+  const value = proposal.value ?? {};
+  // Importance and model confidence do not make an otherwise direct fact uncertain.
+  if (uncertain || value.identityAmbiguous || value.ownershipAmbiguous || value.conflict || value.inferred || value.quantityUnknown || value.negatedAmbiguous) {
     return 'pending';
   }
-
   return 'apply';
+}
+
+function canonicalFactKey(proposal) {
+  const value = proposal.value ?? {};
+  const subject = proposal.subjectEntityId ?? value.subjectEntityId ?? value.ownerEntityId ?? value.owner ?? value.subject ?? '';
+  const name = value.name ?? value.item ?? value.currency ?? value.status ?? value.time ?? value.place ?? value.location ?? '';
+  const dimension = value.dimension ?? (proposal.kind === 'person' ? 'person' : 'default');
+  return `${proposal.kind}:${subject}:${dimension}:${name}`;
+}
+
+function consolidateReviewItems(items, sourceMessageRefs) {
+  const latest = new Map();
+  items.forEach((item, index) => {
+    const sourceMessageIndex = sourceMessageRefs.indexOf(item.evidenceMessageRef);
+    const enriched = { ...item, factKey: canonicalFactKey(item), sourceMessageIndex: sourceMessageIndex < 0 ? index : sourceMessageIndex };
+    const current = latest.get(enriched.factKey);
+    if (!current || enriched.sourceMessageIndex >= current.sourceMessageIndex) latest.set(enriched.factKey, enriched);
+  });
+  return [...latest.values()];
 }
 
 function createReviewItem(proposal, originBucket, uncertain) {
@@ -551,12 +574,13 @@ export function completeBatchAnalysis(
     throw new Error(`批次 ${batchId} 目前不可寫入分析結果`);
   }
 
-  const detectedChanges = ANALYSIS_CHANGE_BUCKETS.flatMap((bucket) =>
+  const rawDetectedChanges = ANALYSIS_CHANGE_BUCKETS.flatMap((bucket) =>
     analysis[bucket].map((proposal) => createReviewItem(proposal, bucket, false)),
   );
-  const uncertainItems = analysis.uncertainItems.map((proposal) =>
+  const detectedChanges = consolidateReviewItems(rawDetectedChanges, batch.sourceMessageRefs);
+  const uncertainItems = consolidateReviewItems(analysis.uncertainItems.map((proposal) =>
     createReviewItem(proposal, 'uncertainItems', true),
-  );
+  ), batch.sourceMessageRefs);
   const handoffDrafts = [
     ...[...detectedChanges, ...uncertainItems].map((item) => handoffDraftFor(item)),
     ...batch.draftActions.map((action) => handoffDraftFor(action, 'action')),
@@ -941,18 +965,32 @@ function sourceEvent(
   timestamp,
   sourceType = 'analysis',
 ) {
+  const sourceMessageIndex = Number.isInteger(item.sourceMessageIndex)
+    ? item.sourceMessageIndex
+    : Number.isInteger(item.storyOrder) ? item.storyOrder : 0;
+  const sourceMessageRef = item.evidenceMessageRef ?? batch.sourceMessageRefs[sourceMessageIndex] ?? batch.sourceMessageRefs[0] ?? null;
+  const subjectEntityId = item.subjectEntityId ?? item.value?.subjectEntityId ?? item.value?.ownerEntityId ?? null;
+  const factKey = item.factKey ?? `${item.kind}:${item.operation}:${subjectEntityId ?? item.value?.name ?? ''}`;
+  const deterministicId = `event_${hashText(`${sourceMessageRef ?? ''}|${sourceMessageIndex}|${factKey}`)}`;
   return {
-    schemaVersion: 1,
-    eventId,
+    schemaVersion: 2,
+    eventId: deterministicId || eventId,
     batchId: batch.batchId,
     sourceType,
     sourceProposalId: item.proposalId ?? null,
     sourceActionId: item.actionId ?? null,
     sourceMessageRefs: [...batch.sourceMessageRefs],
+    sourceMessageRef,
+    sourceMessageIndex,
+    storyOrder: sourceMessageIndex * 1000 + (Number.isInteger(item.evidenceOrder) ? item.evidenceOrder : 0),
+    evidenceQuote: item.evidenceQuote ?? batch.evidence.find((evidence) => evidence.messageRef === sourceMessageRef)?.quote ?? null,
+    timelineContext: item.timelineContext ?? 'main',
+    subjectEntityId,
+    factKey,
     kind: item.kind,
     operation: item.operation,
     value: clone(item.value),
-    dedupeKey: item.dedupeKey,
+    dedupeKey: `${sourceMessageRef ?? 'manual'}:${factKey}`,
     createdAt: timestamp,
     updatedAt: timestamp,
     deletedAt: null,
@@ -1503,19 +1541,20 @@ export function undoLatestCommittedBatch(
   {
     batchId = defaultId('batch'),
     timestamp = new Date().toISOString(),
+    targetBatchId = null,
   } = {},
 ) {
   if (getBatch(state, batchId)) {
     return state;
   }
 
-  const original = [...state.batches]
-    .reverse()
-    .find(
+  const original = targetBatchId
+    ? getBatch(state, targetBatchId)
+    : [...state.batches].reverse().find(
       (batch) =>
         state.committedBatchIds.includes(batch.batchId) &&
         batch.revertedByBatchId === null &&
-        batch.committedEventIds.length > 0,
+        (batch.committedEventIds.length > 0 || batch.pendingItemIds.length > 0),
     );
 
   if (!original) {
@@ -1558,6 +1597,12 @@ export function undoLatestCommittedBatch(
         }
       : item,
   );
+  const pendingIds = new Set(original.pendingItemIds ?? []);
+  next.pendingItems = next.pendingItems.map((item) =>
+    (pendingIds.has(item.pendingId) || item.batchId === original.batchId) && item.deletedAt === null
+      ? { ...item, status: 'discarded', deletedAt: timestamp, updatedAt: timestamp }
+      : item,
+  );
   next.batches = next.batches.map((batch) =>
     batch.batchId === original.batchId
       ? {
@@ -1588,6 +1633,13 @@ export function undoLatestCommittedBatch(
   next.testState.updatedAt = timestamp;
   next.character = rebuildCharacterState(next.events);
   return stateWithTimestamp(next, timestamp);
+}
+
+// A history import is disposable as a unit. It never mutates other batches.
+export function discardHistoryImportBatch(state, historyBatchId, options = {}) {
+  const batch = requireBatch(state, historyBatchId);
+  if (batch.source !== 'history_import') throw new Error('只可丟棄歷史匯入批次');
+  return undoLatestCommittedBatch(state, { ...options, batchId: options.batchId ?? defaultId('discard_history'), targetBatchId: historyBatchId });
 }
 
 export function getResumableBatch(state) {
