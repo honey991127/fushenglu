@@ -129,13 +129,17 @@ function requireArray(value, field) {
   return clone(value);
 }
 
-function requireVersionedEntities(items, field) {
+function requireVersionedEntities(
+  items,
+  field,
+  supportedVersions = [1],
+) {
   for (const [index, item] of items.entries()) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) {
       throw new ChatStateMigrationError(`${field}[${index}] 必須是物件`);
     }
 
-    if (item.schemaVersion !== 1) {
+    if (!supportedVersions.includes(item.schemaVersion)) {
       throw new ChatStateMigrationError(`${field}[${index}] 版本無效`);
     }
   }
@@ -262,6 +266,7 @@ function normalizeV2(rawState) {
     events: requireVersionedEntities(
       requireArray(rawState.events, 'events'),
       'events',
+      [1, 2],
     ),
     pendingItems: requireVersionedEntities(
       requireArray(rawState.pendingItems, 'pendingItems'),
