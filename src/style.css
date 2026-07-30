@@ -90,6 +90,26 @@
   letter-spacing: 0.13em;
 }
 
+.fushenglu-version {
+  color: var(--fsl-gold);
+  font: 600 14px/1.2 ui-sans-serif, -apple-system, BlinkMacSystemFont, "PingFang TC", sans-serif;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.fushenglu-version-diagnostics {
+  margin-top: 5px !important;
+  color: var(--fsl-muted);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.fushenglu-version-diagnostics strong {
+  display: block;
+  margin-top: 4px;
+  color: #ffd7d1;
+}
+
 .fushenglu-eyebrow,
 .fushenglu-section-heading p,
 .fushenglu-hero > p {

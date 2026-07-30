@@ -1,14 +1,14 @@
-import { maskApiKey } from '../core/api-client.js';
+import { maskApiKey } from '../core/api-client.v042.js';
 import {
   createEmptyAnalysisResult,
   mergeAnalysisResults,
   splitAnalysisMessages,
-} from '../core/analysis-schema.js';
-import { createCharacterAction } from '../core/character-state.js';
+} from '../core/analysis-schema.v042.js';
+import { createCharacterAction } from '../core/character-state.v042.js';
 import {
   analysisResultFromBatch,
   listIncompleteProposals,
-} from '../core/proposal-repair.js';
+} from '../core/proposal-repair.v042.js';
 import {
   addDraftAction,
   beginTurnBatch,
@@ -31,8 +31,8 @@ import {
   updateBatchProposal,
   updateHandoffItem,
   normalizeChatMessages,
-} from '../core/turn-sync.js';
-import { NoActiveChatError } from '../integrations/tauritavern.js';
+} from '../core/turn-sync.v042.js';
+import { NoActiveChatError } from '../integrations/tauritavern.v042.js';
 import {
   APP_VERSION,
   MANIFEST_VERSION,

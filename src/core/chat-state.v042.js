@@ -2,7 +2,7 @@ import {
   CHARACTER_STATE_SCHEMA_VERSION,
   createCharacterState,
   rebuildCharacterState,
-} from './character-state.js';
+} from './character-state.v042.js';
 
 export const CHAT_STATE_SCHEMA_VERSION = 4;
 

@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, rm } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,6 +25,13 @@ for (const requiredField of ['display_name', 'js', 'author', 'version']) {
     throw new Error(`manifest.json 缺少必要欄位：${requiredField}`);
   }
 }
+
+const versionModulePath = resolve(repositoryRoot, 'src/generated/version.v042.js');
+const versionModuleSource = `// This file is generated from manifest.json by scripts/build.mjs.\n// Do not edit it by hand.\nexport const APP_VERSION = ${JSON.stringify(manifest.version)};\nexport const MANIFEST_VERSION = APP_VERSION;\nexport const RUNTIME_VERSION = APP_VERSION;\n`;
+
+assertInsideRepository(versionModulePath);
+await mkdir(dirname(versionModulePath), { recursive: true });
+await writeFile(versionModulePath, versionModuleSource, 'utf8');
 
 for (const runtimeFile of [manifest.js, manifest.css].filter(Boolean)) {
   if (!buildConfig.files.includes(runtimeFile)) {
