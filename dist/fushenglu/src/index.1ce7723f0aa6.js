@@ -1,12 +1,12 @@
 import {
   BrowserApiSettingsStore,
   OpenAICompatibleClient,
-} from './core/api-client.js';
+} from './core/api-client.11d9645a99e3.js';
 import {
   TauriTavernChatStateStore,
   TauriTavernHandoffBridge,
-} from './integrations/tauritavern.js';
-import { mountFushengluApp } from './ui/app.js';
+} from './integrations/tauritavern.f9a00dcea6e3.js';
+import { mountFushengluApp } from './ui/app.68d8f28449cb.js';
 
 let appController = null;
 let waitingForDocument = false;

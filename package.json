@@ -4,12 +4,13 @@
   "type": "module",
   "description": "浮生錄：iPhone TauriTavern / SillyTavern 純前端擴充",
   "scripts": {
-    "check": "node --check src/index.js && node --check src/core/chat-state.js && node --check src/core/character-state.js && node --check src/core/analysis-schema.js && node --check src/core/proposal-repair.js && node --check src/core/flat-analysis.js && node --check src/core/api-client.js && node --check src/core/turn-sync.js && node --check src/integrations/tauritavern.js && node --check src/ui/app.js && node --check src/generated/version.v042.js && node --check scripts/build.mjs && node --check build.config.mjs",
+    "check": "node --check src/index.js && node --check src/version.js && node --check src/core/chat-state.js && node --check src/core/character-state.js && node --check src/core/analysis-schema.js && node --check src/core/proposal-repair.js && node --check src/core/flat-analysis.js && node --check src/core/api-client.js && node --check src/core/turn-sync.js && node --check src/integrations/tauritavern.js && node --check src/ui/app.js && node --check scripts/build.mjs && node --check build.config.mjs",
     "test": "node --test",
     "build": "node scripts/build.mjs",
     "verify": "npm run check && npm run build && npm test"
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "version": "0.4.2"
 }

@@ -2,13 +2,13 @@ import {
   migrateChatState,
   setSampleValue,
   validateChatState,
-} from '../core/chat-state.js';
+} from '../core/chat-state.e5adbf9e780a.js';
 import {
   buildIdentityContext,
   buildHandoffInjection,
   consumeNextGeneration,
   recordHandoffInjection,
-} from '../core/turn-sync.js';
+} from '../core/turn-sync.8f3d80e31b03.js';
 
 export const CHAT_METADATA_KEY = 'fushenglu.chatState';
 export const HANDOFF_PROMPT_KEY = 'fushenglu.handoff';

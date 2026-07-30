@@ -2,7 +2,7 @@ import {
   CHARACTER_STATE_SCHEMA_VERSION,
   createCharacterState,
   rebuildCharacterState,
-} from './character-state.js';
+} from './character-state.6ba348f10062.js';
 
 export const CHAT_STATE_SCHEMA_VERSION = 4;
 
@@ -147,6 +147,60 @@ function requireVersionedEntities(
   return items;
 }
 
+function normalizeEvents(items) {
+  return items.map((rawItem, index) => {
+    if (!rawItem || typeof rawItem !== 'object' || Array.isArray(rawItem)) {
+      throw new ChatStateMigrationError(`events[${index}] 必須是物件`);
+    }
+
+    const item = clone(rawItem);
+    const rawVersion = item.schemaVersion;
+    const parsedVersion =
+      typeof rawVersion === 'string' && /^[12]$/.test(rawVersion)
+        ? Number(rawVersion)
+        : rawVersion;
+    const recognizableLegacyEvent =
+      typeof item.eventId === 'string' &&
+      item.eventId.trim() !== '' &&
+      typeof item.kind === 'string' &&
+      item.kind.trim() !== '' &&
+      typeof item.operation === 'string' &&
+      item.operation.trim() !== '' &&
+      Object.hasOwn(item, 'value');
+    const missingLegacyVersion =
+      rawVersion === undefined ||
+      rawVersion === null ||
+      rawVersion === 0 ||
+      rawVersion === '0';
+    const schemaVersion =
+      missingLegacyVersion && recognizableLegacyEvent
+        ? 1
+        : parsedVersion;
+
+    if (![1, 2].includes(schemaVersion)) {
+      throw new ChatStateMigrationError(
+        `events[${index}] 版本無效（收到 ${String(rawVersion)}；支援 1、2）`,
+      );
+    }
+
+    return {
+      ...item,
+      schemaVersion,
+      sourceMessageRefs: Array.isArray(item.sourceMessageRefs)
+        ? [...item.sourceMessageRefs]
+        : [],
+      deletedAt:
+        item.deletedAt === undefined ? null : item.deletedAt,
+      updatedAt:
+        item.updatedAt ?? item.createdAt ?? null,
+    };
+  });
+}
+
+
+
+
+
 function normalizeSyncState(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new ChatStateMigrationError('sync 格式無效');
@@ -263,10 +317,8 @@ function normalizeV2(rawState) {
     ),
     sync: normalizeSyncState(rawState.sync),
     batches,
-    events: requireVersionedEntities(
+    events: normalizeEvents(
       requireArray(rawState.events, 'events'),
-      'events',
-      [1, 2],
     ),
     pendingItems: requireVersionedEntities(
       requireArray(rawState.pendingItems, 'pendingItems'),

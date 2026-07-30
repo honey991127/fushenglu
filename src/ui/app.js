@@ -37,7 +37,7 @@ import {
   APP_VERSION,
   MANIFEST_VERSION,
   RUNTIME_VERSION,
-} from '../generated/version.v042.js';
+} from '../version.js';
 
 const APP_ROOT_ID = 'fushenglu-extension-root';
 

@@ -4,6 +4,9 @@ import { readFile } from 'node:fs/promises';
 
 const appSource = await readFile(new URL('../src/ui/app.js', import.meta.url), 'utf8');
 const styleSource = await readFile(new URL('../src/style.css', import.meta.url), 'utf8');
+const packageJson = JSON.parse(
+  await readFile(new URL('../package.json', import.meta.url), 'utf8'),
+);
 const manifestJson = JSON.parse(
   await readFile(new URL('../manifest.json', import.meta.url), 'utf8'),
 );
@@ -37,8 +40,10 @@ test('表單資料在停用控制項前捕捉，並傳入正確保存與載入�
   assert.match(saveSection, /catch \(error\)[\s\S]*?setStatus\(/);
 });
 
-test('插件發布版本由 manifest 統一為 0.4.2', () => {
-  assert.equal(manifestJson.version, '0.4.2');
+test('package and manifest use the same valid semver version', () => {
+  const semver = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+  assert.match(manifestJson.version, semver);
+  assert.equal(packageJson.version, manifestJson.version);
 });
 
 test('未載入模型時三個模型輸入框仍是可見的自訂 combo box', () => {

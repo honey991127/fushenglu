@@ -1,14 +1,14 @@
-import { maskApiKey } from '../core/api-client.v042.js';
+import { maskApiKey } from '../core/api-client.11d9645a99e3.js';
 import {
   createEmptyAnalysisResult,
   mergeAnalysisResults,
   splitAnalysisMessages,
-} from '../core/analysis-schema.v042.js';
-import { createCharacterAction } from '../core/character-state.v042.js';
+} from '../core/analysis-schema.8252ea5a6bb2.js';
+import { createCharacterAction } from '../core/character-state.6ba348f10062.js';
 import {
   analysisResultFromBatch,
   listIncompleteProposals,
-} from '../core/proposal-repair.v042.js';
+} from '../core/proposal-repair.505675c642f9.js';
 import {
   addDraftAction,
   beginTurnBatch,
@@ -31,13 +31,13 @@ import {
   updateBatchProposal,
   updateHandoffItem,
   normalizeChatMessages,
-} from '../core/turn-sync.v042.js';
-import { NoActiveChatError } from '../integrations/tauritavern.v042.js';
+} from '../core/turn-sync.8f3d80e31b03.js';
+import { NoActiveChatError } from '../integrations/tauritavern.f9a00dcea6e3.js';
 import {
   APP_VERSION,
   MANIFEST_VERSION,
   RUNTIME_VERSION,
-} from '../generated/version.v042.js';
+} from '../version.ed85c241c92f.js';
 
 const APP_ROOT_ID = 'fushenglu-extension-root';
 

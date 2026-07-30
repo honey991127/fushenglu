@@ -8,7 +8,7 @@ import {
   createEmptyAnalysisResult,
   normalizeAnalysisResultShape,
   parseJsonObject,
-} from './analysis-schema.v042.js';
+} from './analysis-schema.8252ea5a6bb2.js';
 
 const KIND_BUCKET = Object.freeze({
   story_time: 'storyTimeChanges',
