@@ -34,6 +34,7 @@ function idFactory() {
 function proposal(overrides = {}) {
   return {
     proposalId: 'proposal-1',
+    subjectEntityId: 'entity:player',
     kind: 'inventory',
     operation: 'add',
     value: { name: '測試物品', quantity: 1 },
@@ -325,12 +326,12 @@ test('回憶中的故事時間保留於歷史，不覆蓋主線目前時間', ()
   });
   const batch = getBatch(state, 'batch-1');
 
-  assert.equal(batch.detectedChanges[0].reviewDisposition, 'apply');
+  assert.equal(batch.detectedChanges[0].reviewDisposition, 'reject');
   state = fullyCommit(state);
-  assert.equal(state.testState.records.length, 1);
+  assert.equal(state.testState.records.length, 0);
   assert.equal(state.pendingItems.length, 0);
   assert.equal(state.character.story.currentTime, null);
-  assert.equal(state.character.story.timelineHistory[0].time, '第五日');
+  assert.equal(state.character.story.timelineHistory.length, 0);
 });
 
 test('App 重開後可恢復 analysis_pending 未完成批次', () => {

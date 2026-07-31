@@ -5,6 +5,9 @@ import {
 } from './analysis-schema.js';
 import { actionRequiresPending } from './character-state.js';
 import { rebuildChatStateSnapshot } from './chat-state.js';
+import { applyAnalysisPolicy } from './analysis-policy.js';
+import { createFactKey } from './fact-key.js';
+import { createEventId } from './event-id.js';
 import {
   inspectProposalPayload,
 } from './proposal-repair.js';
@@ -473,41 +476,45 @@ export function beginTurnBatch(
   };
 }
 
-function defaultDisposition(proposal, uncertain) {
-  const value = proposal.value ?? {};
-  // Importance and model confidence do not make an otherwise direct fact uncertain.
-  if (uncertain || value.identityAmbiguous || value.ownershipAmbiguous || value.conflict || value.inferred || value.quantityUnknown || value.negatedAmbiguous) {
-    return 'pending';
-  }
-  return 'apply';
-}
-
-function canonicalFactKey(proposal) {
-  const value = proposal.value ?? {};
-  const subject = proposal.subjectEntityId ?? value.subjectEntityId ?? value.ownerEntityId ?? value.owner ?? value.subject ?? '';
-  const name = value.name ?? value.item ?? value.currency ?? value.status ?? value.time ?? value.place ?? value.location ?? '';
-  const dimension = value.dimension ?? (proposal.kind === 'person' ? 'person' : 'default');
-  return `${proposal.kind}:${subject}:${dimension}:${name}`;
-}
-
 function consolidateReviewItems(items, sourceMessageRefs) {
   const latest = new Map();
   items.forEach((item, index) => {
-    const sourceMessageIndex = sourceMessageRefs.indexOf(item.evidenceMessageRef);
-    const enriched = { ...item, factKey: canonicalFactKey(item), sourceMessageIndex: sourceMessageIndex < 0 ? index : sourceMessageIndex };
-    const current = latest.get(enriched.factKey);
-    if (!current || enriched.sourceMessageIndex >= current.sourceMessageIndex) latest.set(enriched.factKey, enriched);
+    const sourceMessageIndex = Number.isInteger(item.evidence.messageIndex)
+      ? item.evidence.messageIndex
+      : sourceMessageRefs.indexOf(item.evidence.messageRef);
+    const enriched = { ...item, sourceMessageIndex: sourceMessageIndex < 0 ? index : sourceMessageIndex };
+    const identity = enriched.factKey + ':' + enriched.operation;
+    const current = latest.get(identity);
+    if (!current || enriched.evidence.evidenceOrder >= current.evidence.evidenceOrder) latest.set(identity, enriched);
   });
   return [...latest.values()];
 }
 
-function createReviewItem(proposal, originBucket, uncertain) {
+function createReviewItem(classified) {
+  const candidate = classified;
+  const legacyKind = candidate.kind === 'person_state' ? 'person' : candidate.kind;
+  const reviewDisposition = candidate.disposition === 'apply' ? 'apply' : candidate.disposition === 'pending' ? 'pending' : 'reject';
   return {
     schemaVersion: 1,
-    ...clone(proposal),
-    originBucket,
-    uncertain,
-    reviewDisposition: defaultDisposition(proposal, uncertain),
+    proposalId: candidate.modelProposalId ?? 'policy_' + candidate.factKey,
+    kind: legacyKind,
+    operation: candidate.operation,
+    value: clone(candidate.normalizedValue),
+    confidence: candidate.confidence,
+    evidenceMessageRef: candidate.evidence.messageRef,
+    evidenceQuote: candidate.evidence.quote,
+    evidenceOrder: candidate.evidence.evidenceOrder,
+    subjectEntityId: candidate.subjectRef.entityId,
+    timelineContext: candidate.timelineContext,
+    reason: candidate.reasonCode,
+    severity: 'minor',
+    dedupeKey: candidate.factKey,
+    factKey: candidate.factKey,
+    originBucket: candidate.originBucket,
+    policyDisposition: candidate.disposition,
+    reasonCode: candidate.reasonCode,
+    requiresPlayerDecision: candidate.requiresPlayerDecision,
+    reviewDisposition,
     editedByPlayer: false,
   };
 }
@@ -572,13 +579,10 @@ export function completeBatchAnalysis(
     throw new Error(`批次 ${batchId} 目前不可寫入分析結果`);
   }
 
-  const rawDetectedChanges = ANALYSIS_CHANGE_BUCKETS.flatMap((bucket) =>
-    analysis[bucket].map((proposal) => createReviewItem(proposal, bucket, false)),
-  );
-  const detectedChanges = consolidateReviewItems(rawDetectedChanges, batch.sourceMessageRefs);
-  const uncertainItems = consolidateReviewItems(analysis.uncertainItems.map((proposal) =>
-    createReviewItem(proposal, 'uncertainItems', true),
-  ), batch.sourceMessageRefs);
+  const classified = applyAnalysisPolicy(analysis, state);
+  const reviewItems = consolidateReviewItems(classified, batch.sourceMessageRefs).map(createReviewItem);
+  const detectedChanges = reviewItems.filter((item) => item.policyDisposition !== 'pending');
+  const uncertainItems = reviewItems.filter((item) => item.policyDisposition === 'pending');
   const handoffDrafts = [
     ...[...detectedChanges, ...uncertainItems].map((item) => handoffDraftFor(item)),
     ...batch.draftActions.map((action) => handoffDraftFor(action, 'action')),
@@ -956,42 +960,20 @@ export function startBatchCommit(
   return stateWithTimestamp(replaceBatch(state, committing), timestamp);
 }
 
-function sourceEvent(
-  batch,
-  item,
-  eventId,
-  timestamp,
-  sourceType = 'analysis',
-) {
-  const sourceMessageIndex = Number.isInteger(item.sourceMessageIndex)
-    ? item.sourceMessageIndex
-    : Number.isInteger(item.storyOrder) ? item.storyOrder : 0;
-  const sourceMessageRef = item.evidenceMessageRef ?? batch.sourceMessageRefs[sourceMessageIndex] ?? batch.sourceMessageRefs[0] ?? null;
+function sourceEvent(batch, item, _eventId, timestamp, sourceType = 'analysis') {
+  const sourceMessageIndex = Number.isInteger(item.sourceMessageIndex) ? item.sourceMessageIndex : 0;
+  const sourceMessageRef = item.evidenceMessageRef ?? batch.sourceMessageRefs[sourceMessageIndex] ?? null;
   const subjectEntityId = item.subjectEntityId ?? item.value?.subjectEntityId ?? item.value?.ownerEntityId ?? null;
-  const factKey = item.factKey ?? `${item.kind}:${item.operation}:${subjectEntityId ?? item.value?.name ?? ''}`;
-  const deterministicId = `event_${hashText(`${sourceMessageRef ?? ''}|${sourceMessageIndex}|${factKey}`)}`;
+  const factKey = createFactKey({ kind: item.kind === 'person' ? 'person_state' : item.kind, operation: item.operation, subjectRef: { entityId: subjectEntityId }, value: item.value });
+  const evidenceOrder = Number.isInteger(item.evidenceOrder) ? item.evidenceOrder : 0;
   return {
     schemaVersion: 2,
-    eventId: deterministicId || eventId,
-    batchId: batch.batchId,
-    sourceType,
-    sourceProposalId: item.proposalId ?? null,
-    sourceActionId: item.actionId ?? null,
-    sourceMessageRefs: [...batch.sourceMessageRefs],
-    sourceMessageRef,
-    sourceMessageIndex,
-    storyOrder: sourceMessageIndex * 1000 + (Number.isInteger(item.evidenceOrder) ? item.evidenceOrder : 0),
-    evidenceQuote: item.evidenceQuote ?? batch.evidence.find((evidence) => evidence.messageRef === sourceMessageRef)?.quote ?? null,
-    timelineContext: item.timelineContext ?? 'main',
-    subjectEntityId,
-    factKey,
-    kind: item.kind,
-    operation: item.operation,
-    value: clone(item.value),
-    dedupeKey: `${sourceMessageRef ?? 'manual'}:${factKey}`,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    deletedAt: null,
+    eventId: createEventId({ messageRef: sourceMessageRef, messageIndex: sourceMessageIndex, evidenceOrder, kind: item.kind, operation: item.operation, subjectEntityId, factKey }),
+    batchId: batch.batchId, sourceType, sourceProposalId: item.proposalId ?? null, sourceActionId: item.actionId ?? null,
+    sourceMessageRefs: [...batch.sourceMessageRefs], sourceMessageRef, sourceMessageIndex,
+    storyOrder: sourceMessageIndex * 1000 + evidenceOrder, evidenceQuote: item.evidenceQuote ?? null,
+    timelineContext: item.timelineContext ?? 'main', subjectEntityId, factKey, kind: item.kind, operation: item.operation,
+    value: clone(item.value), dedupeKey: factKey, createdAt: timestamp, updatedAt: timestamp, deletedAt: null,
   };
 }
 
@@ -1052,7 +1034,7 @@ export function commitBatch(
   const existingDedupeKeys = new Set(
     state.events
       .filter((event) => event.deletedAt === null)
-      .map((event) => event.dedupeKey),
+      .map((event) => event.factKey),
   );
   const newEvents = [];
   const newRecords = [];
@@ -1074,7 +1056,7 @@ export function commitBatch(
       payloadIssues: [...inspected.issues],
     };
 
-    if (existingDedupeKeys.has(commitAction.dedupeKey)) {
+    if (existingDedupeKeys.has(createFactKey({ kind: commitAction.kind, operation: commitAction.operation, subjectRef: { entityId: commitAction.subjectEntityId }, value: commitAction.value }))) {
       continue;
     }
 
@@ -1096,7 +1078,7 @@ export function commitBatch(
     );
     newEvents.push(event);
     newRecords.push(testRecordForEvent(event, createId('record'), timestamp));
-    existingDedupeKeys.add(commitAction.dedupeKey);
+    existingDedupeKeys.add(createFactKey({ kind: commitAction.kind, operation: commitAction.operation, subjectRef: { entityId: commitAction.subjectEntityId }, value: commitAction.value }));
   }
 
   for (const item of allReviewItems) {
@@ -1121,7 +1103,7 @@ export function commitBatch(
       continue;
     }
 
-    if (existingDedupeKeys.has(commitItem.dedupeKey)) {
+    if (existingDedupeKeys.has(commitItem.factKey ?? createFactKey({ kind: commitItem.kind, operation: commitItem.operation, subjectRef: { entityId: commitItem.subjectEntityId }, value: commitItem.value }))) {
       rejectedProposalIds.push(commitItem.proposalId);
       continue;
     }
@@ -1130,7 +1112,7 @@ export function commitBatch(
     newEvents.push(event);
     newRecords.push(testRecordForEvent(event, createId('record'), timestamp));
     acceptedProposalIds.push(commitItem.proposalId);
-    existingDedupeKeys.add(commitItem.dedupeKey);
+    existingDedupeKeys.add(commitItem.factKey ?? createFactKey({ kind: commitItem.kind, operation: commitItem.operation, subjectRef: { entityId: commitItem.subjectEntityId }, value: commitItem.value }));
   }
 
   const committed = transitionBatch(

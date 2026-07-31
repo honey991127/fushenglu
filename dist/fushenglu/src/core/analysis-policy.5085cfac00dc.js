@@ -1,0 +1,3 @@
+import { normalizeCandidate } from './candidate-normalizer.ad96146368dd.js';
+import { classifyCandidate } from './semantic-classifier.412582037586.js';
+export function applyAnalysisPolicy(analysis, state) { const buckets = ['storyTimeChanges','inventoryChanges','currencyChanges','wardrobeChanges','skillChanges','cultivationChanges','personChanges','placeChanges','evaluationChanges','uncertainItems']; const output = []; let index = 0; for (const bucket of buckets) for (const raw of analysis[bucket] ?? []) { const candidate = normalizeCandidate(raw, { index: index++ }); const classified = classifyCandidate(candidate, { state }); output.push({ ...classified, originBucket: bucket }); } return output; }
