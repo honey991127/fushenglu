@@ -3,6 +3,7 @@ import {
   createCharacterState,
   rebuildCharacterState,
 } from './character-state.js';
+import { rebuildCurrentSnapshot } from './snapshot-reducer.js';
 
 export const CHAT_STATE_SCHEMA_VERSION = 5;
 
@@ -134,16 +135,10 @@ function createEventLedger(events, updatedAt = null) {
 
 function createDerivedState(events, updatedAt = null) {
   const character = rebuildCharacterState(events);
+  const snapshot = rebuildCurrentSnapshot(events, updatedAt);
   return {
     character,
-    currentSnapshot: {
-      schemaVersion: 1,
-      character: clone(character),
-      sourceEventIds: events
-        .filter((event) => event?.deletedAt === null && typeof event.eventId === 'string')
-        .map((event) => event.eventId),
-      rebuiltAt: updatedAt,
-    },
+    currentSnapshot: { ...snapshot, character: clone(character) },
     entities: clone(character.entities),
     relationships: {
       schemaVersion: 1,
@@ -463,7 +458,7 @@ function normalizeRelationships(raw) {
 
 function normalizeSnapshot(raw, events) {
   const value = normalizeRootObject(raw, 'currentSnapshot');
-  if (value.schemaVersion !== 1 || !Array.isArray(value.sourceEventIds)) {
+  if (![1, 2].includes(value.schemaVersion) || !Array.isArray(value.sourceEventIds)) {
     throw new ChatStateMigrationError('currentSnapshot format invalid');
   }
   return createDerivedState(events, value.rebuiltAt ?? null).currentSnapshot;

@@ -5,8 +5,8 @@ import {
 import {
   TauriTavernChatStateStore,
   TauriTavernHandoffBridge,
-} from './integrations/tauritavern.d6b01857c151.js';
-import { mountFushengluApp } from './ui/app.5a2bb07eb836.js';
+} from './integrations/tauritavern.b95cd9159749.js';
+import { mountFushengluApp } from './ui/app.ea0092f2ab72.js';
 
 let appController = null;
 let waitingForDocument = false;

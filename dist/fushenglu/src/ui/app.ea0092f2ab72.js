@@ -37,8 +37,8 @@ import {
   updateBatchProposal,
   updateHandoffItem,
   normalizeChatMessages,
-} from '../core/turn-sync.8386110f2330.js';
-import { NoActiveChatError } from '../integrations/tauritavern.d6b01857c151.js';
+} from '../core/turn-sync.f536cb0fec1c.js';
+import { NoActiveChatError } from '../integrations/tauritavern.b95cd9159749.js';
 import {
   APP_VERSION,
   MANIFEST_VERSION,
