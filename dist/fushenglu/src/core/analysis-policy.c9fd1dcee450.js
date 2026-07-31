@@ -1,4 +1,4 @@
-import { normalizeCandidate } from './candidate-normalizer.js';
-import { resolveIdentity } from './history-consolidation.js';
-import { classifyCandidate } from './semantic-classifier.js';
+import { normalizeCandidate } from './candidate-normalizer.ad96146368dd.js';
+import { resolveIdentity } from './history-consolidation.3081c7d0a6fb.js';
+import { classifyCandidate } from './semantic-classifier.412582037586.js';
 export function applyAnalysisPolicy(analysis, state, { identityContext = null } = {}) { const buckets = ['storyTimeChanges','inventoryChanges','currencyChanges','wardrobeChanges','skillChanges','cultivationChanges','personChanges','placeChanges','evaluationChanges','uncertainItems']; const output = []; let index = 0; for (const bucket of buckets) for (const raw of analysis[bucket] ?? []) { const candidate = normalizeCandidate(raw, { index: index++ }); const identity = resolveIdentity(candidate.subjectRef, identityContext ?? {}, state.worldRules); const resolved = identity.entityId ? { ...candidate, subjectRef: { ...candidate.subjectRef, entityId: identity.entityId, rawName: candidate.subjectRef.rawName ?? identity.canonicalName } } : candidate; const classified = classifyCandidate(resolved, { state }); output.push({ ...classified, originBucket: bucket }); } return output; }

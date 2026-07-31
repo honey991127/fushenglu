@@ -769,7 +769,7 @@ export class OpenAICompatibleClient {
     return working;
   }
 
-  async analyzeMessages(messages, { batchId, identityContext = null } = {}) {
+  async analyzeMessages(messages, { batchId, identityContext = null, rollingContext = null } = {}) {
     const content = await this.request(
       'analysis',
       [
@@ -780,6 +780,7 @@ export class OpenAICompatibleClient {
             schemaVersion: 1,
             batchId,
             identityContext,
+            rollingContext,
             messages,
           }),
         },

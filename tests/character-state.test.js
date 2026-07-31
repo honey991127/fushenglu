@@ -36,6 +36,16 @@ test('entities retain one current location and transient state', () => {
   assert.equal(mo.transientState.value, '平靜');
 });
 
+test('mainline player place updates the current place while NPC movement does not', () => {
+  const state = rebuildCharacterState([
+    event({ kind: 'place', storyOrder: 1, subjectEntityId: 'entity:npc:mo', value: { name: 'garden', canonicalName: 'Mo' } }),
+    event({ kind: 'place', storyOrder: 2, subjectEntityId: 'entity:player', value: { name: 'library' } }),
+    event({ kind: 'place', storyOrder: 3, timelineContext: 'dream', subjectEntityId: 'entity:player', value: { name: 'dream room' } }),
+  ]);
+  assert.equal(state.entities.byId['entity:npc:mo'].currentLocation, 'garden');
+  assert.equal(state.story.currentScenePlace, 'library');
+});
+
 test('V3 safely migrates to V4 and future state remains protected', () => {
   const v3 = createChatState(at); v3.schemaVersion = 3; delete v3.historyImportProgress; v3.character.schemaVersion = 1;
   const migrated = migrateChatState(v3, at);

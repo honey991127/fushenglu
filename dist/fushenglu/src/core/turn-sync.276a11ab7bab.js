@@ -3,9 +3,9 @@ import {
   assertAnalysisResult,
   createEmptyAnalysisResult,
 } from './analysis-schema.8252ea5a6bb2.js';
-import { actionRequiresPending } from './character-state.a8c46e617c6b.js';
-import { rebuildChatStateSnapshot } from './chat-state.13d42de2251a.js';
-import { applyAnalysisPolicy } from './analysis-policy.5085cfac00dc.js';
+import { actionRequiresPending } from './character-state.71839ed76474.js';
+import { rebuildChatStateSnapshot } from './chat-state.7a6c9c9b34f5.js';
+import { applyAnalysisPolicy } from './analysis-policy.c9fd1dcee450.js';
 import { createFactKey } from './fact-key.0f9d5b48a24e.js';
 import { createEventId } from './event-id.d553cbd953d1.js';
 import {
@@ -579,7 +579,7 @@ export function completeBatchAnalysis(
     throw new Error(`批次 ${batchId} 目前不可寫入分析結果`);
   }
 
-  const classified = applyAnalysisPolicy(analysis, state);
+  const classified = applyAnalysisPolicy(analysis, state, { identityContext: batch.identityContext });
   const reviewItems = consolidateReviewItems(classified, batch.sourceMessageRefs).map(createReviewItem);
   const detectedChanges = reviewItems.filter((item) => item.policyDisposition !== 'pending');
   const uncertainItems = reviewItems.filter((item) => item.policyDisposition === 'pending');

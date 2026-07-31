@@ -91,7 +91,7 @@ function applyStory(state, event) {
     const place = optional(value.name ?? value.place ?? value.description);
     if (!place) return;
     if (!state.places.entries.some((entry) => entry.name === place)) state.places.entries.push({ schemaVersion: 1, name: place, eventId: event.eventId });
-    if (MAIN.has(event.timelineContext) && !event.subjectEntityId && !value.subjectEntityId) { state.story.currentScenePlace = place; state.story.place = place; }
+    if (MAIN.has(event.timelineContext)) { const subjectEntityId = clean(event.subjectEntityId ?? value.subjectEntityId); if (!subjectEntityId || subjectEntityId === 'entity:player') { state.story.currentScenePlace = place; state.story.place = place; } else { const entityId = ensureEntity(state, event); state.entities.byId[entityId].currentLocation = place; } }
   }
 }
 

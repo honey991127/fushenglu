@@ -579,7 +579,7 @@ export function completeBatchAnalysis(
     throw new Error(`批次 ${batchId} 目前不可寫入分析結果`);
   }
 
-  const classified = applyAnalysisPolicy(analysis, state);
+  const classified = applyAnalysisPolicy(analysis, state, { identityContext: batch.identityContext });
   const reviewItems = consolidateReviewItems(classified, batch.sourceMessageRefs).map(createReviewItem);
   const detectedChanges = reviewItems.filter((item) => item.policyDisposition !== 'pending');
   const uncertainItems = reviewItems.filter((item) => item.policyDisposition === 'pending');
