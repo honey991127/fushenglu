@@ -971,7 +971,7 @@ function sourceEvent(batch, item, _eventId, timestamp, sourceType = 'analysis') 
     eventId: createEventId({ messageRef: sourceMessageRef, messageIndex: sourceMessageIndex, evidenceOrder, kind: item.kind, operation: item.operation, subjectEntityId, factKey }),
     batchId: batch.batchId, sourceType, sourceProposalId: item.proposalId ?? null, sourceActionId: item.actionId ?? null,
     sourceMessageRefs: [...batch.sourceMessageRefs], sourceMessageRef, sourceMessageIndex,
-    storyOrder: sourceMessageIndex * 1000 + evidenceOrder, evidenceQuote: item.evidenceQuote ?? null,
+    storyOrder: sourceMessageIndex, sourceOrder: { messageIndex: sourceMessageIndex, evidenceOrder }, evidenceQuote: item.evidenceQuote ?? null,
     timelineContext: item.timelineContext ?? 'main', subjectEntityId, factKey, kind: item.kind, operation: item.operation,
     value: clone(item.value), dedupeKey: factKey, createdAt: timestamp, updatedAt: timestamp, deletedAt: null,
   };

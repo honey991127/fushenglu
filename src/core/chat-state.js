@@ -97,6 +97,8 @@ function createHistoryImportProgress() {
     messageRefsHash: '',
     chunkBoundaries: [],
     completedChunkIndexes: [],
+    failedChunkIndex: null,
+    rollingContext: null,
     updatedAt: null,
   };
 }
@@ -404,8 +406,14 @@ function normalizeV4(rawState) {
   if (
     !progress ||
     progress.schemaVersion !== 1 ||
+    !Number.isInteger(progress.pipelineVersion) ||
+    typeof progress.branchFingerprint !== 'string' ||
+    typeof progress.messageRefsHash !== 'string' ||
     !Array.isArray(progress.chunkBoundaries) ||
-    !Array.isArray(progress.completedChunkIndexes)
+    !Array.isArray(progress.completedChunkIndexes) ||
+    !(progress.failedChunkIndex === null || Number.isInteger(progress.failedChunkIndex)) ||
+    !(progress.rollingContext === null || (typeof progress.rollingContext === 'object' && !Array.isArray(progress.rollingContext))) ||
+    !(progress.updatedAt === null || (typeof progress.updatedAt === 'string' && !Number.isNaN(Date.parse(progress.updatedAt))))
   ) {
     throw new ChatStateMigrationError('historyImportProgress format invalid');
   }

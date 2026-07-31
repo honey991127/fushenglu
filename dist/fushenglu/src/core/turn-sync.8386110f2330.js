@@ -3,9 +3,9 @@ import {
   assertAnalysisResult,
   createEmptyAnalysisResult,
 } from './analysis-schema.8252ea5a6bb2.js';
-import { actionRequiresPending } from './character-state.71839ed76474.js';
-import { rebuildChatStateSnapshot } from './chat-state.7a6c9c9b34f5.js';
-import { applyAnalysisPolicy } from './analysis-policy.c9fd1dcee450.js';
+import { actionRequiresPending } from './character-state.ba690c468c51.js';
+import { rebuildChatStateSnapshot } from './chat-state.25940e269151.js';
+import { applyAnalysisPolicy } from './analysis-policy.f7f8e3ed9cbc.js';
 import { createFactKey } from './fact-key.0f9d5b48a24e.js';
 import { createEventId } from './event-id.d553cbd953d1.js';
 import {
@@ -971,7 +971,7 @@ function sourceEvent(batch, item, _eventId, timestamp, sourceType = 'analysis') 
     eventId: createEventId({ messageRef: sourceMessageRef, messageIndex: sourceMessageIndex, evidenceOrder, kind: item.kind, operation: item.operation, subjectEntityId, factKey }),
     batchId: batch.batchId, sourceType, sourceProposalId: item.proposalId ?? null, sourceActionId: item.actionId ?? null,
     sourceMessageRefs: [...batch.sourceMessageRefs], sourceMessageRef, sourceMessageIndex,
-    storyOrder: sourceMessageIndex * 1000 + evidenceOrder, evidenceQuote: item.evidenceQuote ?? null,
+    storyOrder: sourceMessageIndex, sourceOrder: { messageIndex: sourceMessageIndex, evidenceOrder }, evidenceQuote: item.evidenceQuote ?? null,
     timelineContext: item.timelineContext ?? 'main', subjectEntityId, factKey, kind: item.kind, operation: item.operation,
     value: clone(item.value), dedupeKey: factKey, createdAt: timestamp, updatedAt: timestamp, deletedAt: null,
   };

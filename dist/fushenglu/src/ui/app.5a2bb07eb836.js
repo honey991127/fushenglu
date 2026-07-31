@@ -1,16 +1,16 @@
-import { maskApiKey } from '../core/api-client.b45198c99ae2.js';
+import { maskApiKey } from '../core/api-client.f774330f64da.js';
 import {
   createEmptyAnalysisResult,
   mergeAnalysisResults,
   splitAnalysisMessages,
 } from '../core/analysis-schema.8252ea5a6bb2.js';
-import { createCharacterAction } from '../core/character-state.71839ed76474.js';
+import { createCharacterAction } from '../core/character-state.ba690c468c51.js';
 import {
   buildRollingContext,
   canResumeHistoryImport,
   createHistoryFingerprint,
   prepareHistoryChunks,
-} from '../core/history-consolidation.3081c7d0a6fb.js';
+} from '../core/history-consolidation.bbbff84b6958.js';
 import {
   analysisResultFromBatch,
   listIncompleteProposals,
@@ -37,8 +37,8 @@ import {
   updateBatchProposal,
   updateHandoffItem,
   normalizeChatMessages,
-} from '../core/turn-sync.276a11ab7bab.js';
-import { NoActiveChatError } from '../integrations/tauritavern.1c7b66eb2c46.js';
+} from '../core/turn-sync.8386110f2330.js';
+import { NoActiveChatError } from '../integrations/tauritavern.d6b01857c151.js';
 import {
   APP_VERSION,
   MANIFEST_VERSION,
@@ -946,50 +946,13 @@ export function mountFushengluApp({
         ...progress,
         updatedAt: timestamp,
       },
-      batches: current.batches.map((item) =>
-        item.batchId === batchId
-          ? {
-              ...item,
-              historyImportProgress: {
-                schemaVersion: 1,
-                ...progress,
-                updatedAt: timestamp,
-              },
-            }
-          : item,
-      ),
+      batches: current.batches,
     }));
   }
 
-  function historyImportProgressFor(batch, totalChunks, fingerprint) {
-    const saved = batch.historyImportProgress;
-
-    if (
-      saved?.schemaVersion === 1 &&
-      saved.totalChunks === totalChunks &&
-      canResumeHistoryImport(saved, fingerprint) &&
-      Number.isInteger(saved.nextChunkIndex) &&
-      saved.nextChunkIndex >= 0 &&
-      saved.nextChunkIndex <= totalChunks &&
-      saved.mergedAnalysis
-    ) {
-      return {
-        ...saved,
-        mergedAnalysis: mergeAnalysisResults([
-          saved.mergedAnalysis,
-        ]),
-      };
-    }
-
-    return {
-      schemaVersion: 1,
-      ...fingerprint,
-      totalChunks,
-      nextChunkIndex: 0,
-      completedChunks: 0,
-      failedChunkIndex: null,
-      mergedAnalysis: createEmptyAnalysisResult(),
-    };
+  function historyImportProgressFor(saved, fingerprint) {
+    if (canResumeHistoryImport(saved, fingerprint)) return { ...saved, completedChunkIndexes: [], failedChunkIndex: null };
+    return { schemaVersion: 1, ...fingerprint, completedChunkIndexes: [], failedChunkIndex: null, rollingContext: null, analysisRequestCount: 0, repairRequestCount: 0 };
   }
 
   async function analyzeHistoryImportBatch(batch) {
@@ -1018,11 +981,12 @@ export function mountFushengluApp({
       throw new Error('目前聊天沒有可分析的 user／assistant 訊息。');
     }
 
-    let progress = historyImportProgressFor(batch, chunks.length, fingerprint);
-    let mergedAnalysis = progress.mergedAnalysis;
+    const persisted = (await store.read()).state.historyImportProgress;
+    let progress = historyImportProgressFor(persisted, fingerprint);
+    let mergedAnalysis = createEmptyAnalysisResult();
 
     for (
-      let chunkIndex = progress.nextChunkIndex;
+      let chunkIndex = 0;
       chunkIndex < chunks.length;
       chunkIndex += 1
     ) {
@@ -1041,17 +1005,19 @@ export function mountFushengluApp({
               `${batch.batchId}:part:${chunkIndex + 1}`,
             identityContext: chunks[chunkIndex].identityContext,
             rollingContext: chunks[chunkIndex].rollingContext,
+            repairCandidates: false,
+            repairFormat: false,
           },
         );
       } catch (error) {
         await saveHistoryImportProgress(batch.batchId, {
           ...progress,
           ...fingerprint,
-          totalChunks: chunks.length,
-          nextChunkIndex: chunkIndex,
-          completedChunks: chunkIndex,
+          completedChunkIndexes: progress.completedChunkIndexes,
           failedChunkIndex: chunkIndex,
-          mergedAnalysis,
+          rollingContext: chunks[chunkIndex].rollingContext,
+          analysisRequestCount: progress.analysisRequestCount,
+          repairRequestCount: progress.repairRequestCount,
         });
 
         throw new Error(
@@ -1068,11 +1034,11 @@ export function mountFushengluApp({
       progress = {
         schemaVersion: 1,
         ...fingerprint,
-        totalChunks: chunks.length,
-        nextChunkIndex: chunkIndex + 1,
-        completedChunks: chunkIndex + 1,
+        completedChunkIndexes: [...progress.completedChunkIndexes, chunkIndex],
         failedChunkIndex: null,
-        mergedAnalysis,
+        rollingContext: chunks[chunkIndex].rollingContext,
+        analysisRequestCount: progress.analysisRequestCount + 1,
+        repairRequestCount: progress.repairRequestCount,
       };
 
       await saveHistoryImportProgress(
@@ -1086,6 +1052,12 @@ export function mountFushengluApp({
       'neutral',
     );
 
+    const incomplete = listIncompleteProposals(mergedAnalysis);
+    if (incomplete.length > 0) {
+      mergedAnalysis = await apiClient.repairIncompleteAnalysis(mergedAnalysis, messages, { batchId: `${batch.batchId}:history-repair`, maxRequests: 1 });
+      progress = { ...progress, repairRequestCount: 1 };
+      await saveHistoryImportProgress(batch.batchId, progress);
+    }
     return mergedAnalysis;
   }
 
@@ -1200,7 +1172,7 @@ export function mountFushengluApp({
       const currentAnalysis = analysisResultFromBatch(reviewBatch);
       const incomplete = listIncompleteProposals(currentAnalysis);
 
-      if (incomplete.length > 0) {
+      if (incomplete.length > 0 && reviewBatch.source !== 'history_import') {
         setStatus(
           `正在依本聊天原文修復 ${incomplete.length} 筆不完整候選…`,
           'neutral',

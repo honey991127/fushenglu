@@ -8,6 +8,7 @@ import { createChatState } from '../src/core/chat-state.js';
 import {
   buildRollingContext,
   canResumeHistoryImport,
+  consolidateTimeCandidates,
   createHistoryFingerprint,
   createStoryOrder,
   prepareHistoryChunks,
@@ -22,12 +23,34 @@ function candidate(overrides = {}) {
 }
 
 test('story order is message index then evidence order, never createdAt', () => {
-  assert.equal(createStoryOrder({ messageIndex: 3, evidenceOrder: 7 }), 3007);
+  assert.deepEqual(createStoryOrder({ messageIndex: 3, evidenceOrder: 7 }), { messageIndex: 3, evidenceOrder: 7 });
   const snapshot = reduceCurrentSnapshot([
     candidate({ evidence: { messageIndex: 2, evidenceOrder: 9 }, normalizedValue: { time: 'later' } }),
     candidate({ evidence: { messageIndex: 2, evidenceOrder: 1 }, normalizedValue: { time: 'earlier' } }),
   ]);
   assert.equal(snapshot.currentTime, 'later');
+});
+
+test('time consolidation joins date and time, keeps ranges, corrections, anchors, and one pending anchor gap', () => {
+  const ordered = (time, index) => candidate({ normalizedValue: { time }, evidence: { messageIndex: index, evidenceOrder: 0 } });
+  const joined = consolidateTimeCandidates([ordered('\u4e09\u6708\u5341\u4e03', 0), ordered('\u672a\u6642', 1)]);
+  assert.equal(joined.currentTime, '\u4e09\u6708\u5341\u4e03 \u672a\u6642');
+  const range = consolidateTimeCandidates([ordered('\u672a\u6642\u672b\u81f3\u7533\u6642\u521d', 0)]);
+  assert.equal(range.currentTime, '\u7533\u6642\u521d'); assert.equal(range.history[0].rangeText, '\u672a\u6642\u672b\u81f3\u7533\u6642\u521d');
+  assert.equal(consolidateTimeCandidates([ordered('\u662f\u591c', 1)], '\u4e09\u6708\u5341\u4e03').currentTime, '\u4e09\u6708\u5341\u4e03 \u662f\u591c');
+  assert.equal(consolidateTimeCandidates([ordered('\u7fcc\u65e5', 1)], '\u4e09\u6708\u5341\u4e03').currentTime, '\u4e09\u6708\u5341\u4e03 \u7fcc\u65e5');
+  assert.equal(consolidateTimeCandidates([ordered('\u4e09\u65e5\u5f8c', 1)], '\u4e09\u6708\u5341\u4e03').currentTime, '\u4e09\u6708\u5341\u4e03 \u4e09\u65e5\u5f8c');
+  assert.equal(consolidateTimeCandidates([ordered('\u4e0d\u662f\u4e09\u6708\u5341\u4e03\uff0c\u662f\u4e09\u6708\u5341\u516b', 0)]).currentTime, '\u4e09\u6708\u5341\u516b');
+  assert.equal(consolidateTimeCandidates([ordered('\u65b9\u624d\u8aaa\u932f\u4e86\uff0c\u4eca\u65e5\u5176\u5be6\u662f\u521d\u4e5d', 0)]).currentTime, '\u521d\u4e5d');
+  assert.equal(consolidateTimeCandidates([ordered('\u662f\u591c', 0)]).pending.length, 1);
+  assert.equal(consolidateTimeCandidates([ordered('\u4e09\u6708\u5341\u4e03', 0), ordered('\u56db\u6708\u521d\u4e00', 1)]).pending.length, 0);
+});
+
+test('structured source order does not collide at evidence order 1000', () => {
+  const first = createStoryOrder({ messageIndex: 1, evidenceOrder: 1000 });
+  const second = createStoryOrder({ messageIndex: 2, evidenceOrder: 0 });
+  assert.notDeepEqual(first, second);
+  assert.equal(reduceCurrentSnapshot([candidate({ normalizedValue: { time: 'first' }, evidence: first }), candidate({ normalizedValue: { time: 'second' }, evidence: second })]).currentTime, 'second');
 });
 
 test('only main applied time changes current time; non-main and pending do not', () => {
@@ -95,4 +118,14 @@ test('API analysis accepts rolling context and the UI persists resumable fingerp
   assert.match(app, /prepareHistoryChunks/);
   assert.match(app, /createHistoryFingerprint/);
   assert.match(app, /canResumeHistoryImport/);
+});
+
+test('chunk loop only saves root progress; formal review and host prompt happen after it returns', async () => {
+  const [app, host] = await Promise.all([readFile(new URL('../src/ui/app.js', import.meta.url), 'utf8'), readFile(new URL('../src/integrations/tauritavern.js', import.meta.url), 'utf8')]);
+  const start = app.indexOf('async function analyzeHistoryImportBatch');
+  const end = app.indexOf('async function analyzeBatch', start);
+  const loop = app.slice(start, end);
+  assert.doesNotMatch(loop, /completeBatchAnalysis|pendingItems|handoffItems|eventLedger|setExtensionPrompt/);
+  assert.match(app.slice(end), /completeBatchAnalysis/);
+  assert.match(host, /setExtensionPrompt/);
 });

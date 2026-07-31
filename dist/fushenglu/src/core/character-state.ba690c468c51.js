@@ -8,7 +8,7 @@ function copy(value) { return typeof structuredClone === 'function' ? structured
 function clean(value) { return String(value ?? '').trim(); }
 function optional(value) { const result = clean(value); return result || null; }
 function number(value) { const result = Number(value); return Number.isFinite(result) ? result : null; }
-function eventOrder(event, index) { return Number.isFinite(Number(event.storyOrder)) ? Number(event.storyOrder) : Number.isFinite(Number(event.sourceMessageIndex)) ? Number(event.sourceMessageIndex) : index; }
+function eventOrder(event, index) { const source = event.sourceOrder; if (source && Number.isInteger(source.messageIndex) && Number.isInteger(source.evidenceOrder)) return [source.messageIndex, source.evidenceOrder]; return [Number.isFinite(Number(event.storyOrder)) ? Number(event.storyOrder) : Number.isFinite(Number(event.sourceMessageIndex)) ? Number(event.sourceMessageIndex) : index, 0]; }
 function stableHash(value) { let hash = 0x811c9dc5; for (const char of String(value)) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 0x01000193); } return (hash >>> 0).toString(16); }
 
 export function createCharacterState() {
@@ -124,7 +124,7 @@ export function applyCharacterEvent(character, event) {
 }
 
 export function rebuildCharacterState(events = []) {
-  return events.filter((event) => event?.deletedAt === null).map((event, index) => ({ event, index })).sort((a, b) => eventOrder(a.event, a.index) - eventOrder(b.event, b.index) || String(a.event.eventId).localeCompare(String(b.event.eventId))).reduce((state, item) => applyCharacterEvent(state, item.event), createCharacterState());
+  return events.filter((event) => event?.deletedAt === null).map((event, index) => ({ event, index })).sort((a, b) => { const left = eventOrder(a.event, a.index); const right = eventOrder(b.event, b.index); return left[0] - right[0] || left[1] - right[1] || String(a.event.eventId).localeCompare(String(b.event.eventId)); }).reduce((state, item) => applyCharacterEvent(state, item.event), createCharacterState());
 }
 
 // Pending is about ambiguity/conflict, not importance or proposal kind.

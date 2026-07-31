@@ -8,11 +8,12 @@ function clone(value) { return typeof structuredClone === 'function' ? structure
 export function createStoryOrder({ messageIndex = 0, evidenceOrder = 0 } = {}) {
   const message = Number.isInteger(messageIndex) && messageIndex >= 0 ? messageIndex : 0;
   const evidence = Number.isInteger(evidenceOrder) && evidenceOrder >= 0 ? evidenceOrder : 0;
-  return message * 1000 + evidence;
+  return { messageIndex: message, evidenceOrder: evidence };
 }
 
 export function compareStoryOrder(left, right) {
-  return createStoryOrder(left?.evidence ?? left) - createStoryOrder(right?.evidence ?? right)
+  const leftOrder = createStoryOrder(left?.evidence ?? left); const rightOrder = createStoryOrder(right?.evidence ?? right);
+  return leftOrder.messageIndex - rightOrder.messageIndex || leftOrder.evidenceOrder - rightOrder.evidenceOrder
     || String(left?.evidence?.messageRef ?? left?.messageRef ?? '').localeCompare(String(right?.evidence?.messageRef ?? right?.messageRef ?? ''));
 }
 
@@ -77,6 +78,26 @@ export function reduceCurrentSnapshot(candidates, previous = {}) {
     }
   }
   return snapshot;
+}
+
+export function consolidateTimeCandidates(candidates, previousTime = null) {
+  let currentTime = previousTime; const pending = []; const history = [];
+  for (const candidate of [...candidates].sort(compareStoryOrder)) {
+    if (candidate.disposition !== 'apply' || NON_MAIN.has(candidate.timelineContext)) continue;
+    const source = clean(candidate.normalizedValue?.time ?? candidate.value?.time ?? candidate.text);
+    if (!source) continue;
+    let resolved = source; let rangeText = null;
+    const correction = source.match(/(?:\u4e0d\u662f.+?[\uff0c,]\s*\u662f|\u5176\u5be6\u662f)(.+)$/);
+    if (correction) resolved = correction[1].trim();
+    const range = resolved.match(/^(.+?)\u81f3(.+)$/);
+    if (range) { rangeText = resolved; resolved = range[2].trim(); }
+    if (/^\u662f\u591c$/.test(resolved)) { if (!currentTime) { pending.push({ ...candidate, reasonCode: 'time_anchor_missing' }); continue; } resolved = `${currentTime} \u662f\u591c`; }
+    if (/^(\u7fcc\u65e5|\u4e09\u65e5\u5f8c)$/.test(resolved)) { if (!currentTime) { pending.push({ ...candidate, reasonCode: 'time_anchor_missing' }); continue; } resolved = `${currentTime} ${resolved}`; }
+    if (/^(\u5b50|\u4e11|\u5bc5|\u536f|\u8fb0|\u5df3|\u5348|\u672a|\u7533|\u9149|\u620c|\u4ea5)\u6642/.test(resolved) && currentTime) resolved = `${currentTime} ${resolved}`;
+    currentTime = resolved;
+    history.push({ eventId: candidate.eventId ?? null, currentTime, rangeText, sourceOrder: createStoryOrder(candidate.evidence ?? candidate) });
+  }
+  return { currentTime, pending, history };
 }
 
 export function prepareHistoryChunks(messages, split, { overlapMessages = 2, identityContext, rollingContext } = {}) {

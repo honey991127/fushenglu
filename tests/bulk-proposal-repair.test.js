@@ -94,3 +94,14 @@ test('16 筆候選只發出兩次批次修復請求', async () => {
   assert.equal(result.inventoryChanges.length, 16);
   assert.equal(result.uncertainItems.length, 0);
 });
+
+test('history repair maxRequests limits the entire stage to one request', async () => {
+  const analysis = createEmptyAnalysisResult();
+  const messages = [];
+  for (let index = 1; index <= 16; index += 1) { analysis.inventoryChanges.push({ proposalId: `p-${index}`, kind: 'inventory', operation: 'add', value: { quantity: 1 }, confidence: 0.9, evidenceMessageRef: `m-${index}`, reason: 'missing name', severity: 'minor', dedupeKey: `d-${index}` }); messages.push({ messageRef: `m-${index}`, role: 'assistant', content: 'item' }); }
+  let calls = 0;
+  const client = new OpenAICompatibleClient({ settingsStore: store(), logger: { warn() {}, error() {}, info() {} }, fetchImpl: async () => { calls += 1; throw new Error('repair unavailable'); } });
+  const result = await client.repairIncompleteAnalysis(analysis, messages, { batchId: 'history', maxRequests: 1 });
+  assert.equal(calls, 1);
+  assert.equal(result.inventoryChanges.length + result.uncertainItems.length, 16);
+});

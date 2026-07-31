@@ -648,12 +648,12 @@ export class OpenAICompatibleClient {
   async repairIncompleteAnalysis(
     result,
     messages,
-    { batchId, onProgress = null } = {},
+    { batchId, onProgress = null, maxRequests = Infinity } = {},
   ) {
     let working = normalizeAnalysisPayloads(result);
     const incomplete = listIncompleteProposals(working);
     const groupSize = 8;
-    const totalGroups = Math.ceil(incomplete.length / groupSize);
+    const totalGroups = Math.min(Math.ceil(incomplete.length / groupSize), maxRequests);
 
     for (let groupIndex = 0; groupIndex < totalGroups; groupIndex += 1) {
       const group = incomplete.slice(
@@ -769,7 +769,7 @@ export class OpenAICompatibleClient {
     return working;
   }
 
-  async analyzeMessages(messages, { batchId, identityContext = null, rollingContext = null } = {}) {
+  async analyzeMessages(messages, { batchId, identityContext = null, rollingContext = null, repairCandidates = true, repairFormat = true } = {}) {
     const content = await this.request(
       'analysis',
       [
@@ -792,7 +792,7 @@ export class OpenAICompatibleClient {
     try {
       result = parseAndConvertFlatAnalysis(content);
     } catch (error) {
-      if (!(error instanceof AnalysisSchemaError)) {
+      if (!(error instanceof AnalysisSchemaError) || !repairFormat) {
         throw error;
       }
 
@@ -817,11 +817,7 @@ export class OpenAICompatibleClient {
       result = parseAndConvertFlatAnalysis(repairedContent);
     }
 
-    result = await this.repairIncompleteAnalysis(
-      result,
-      messages,
-      { batchId },
-    );
+    if (repairCandidates) result = await this.repairIncompleteAnalysis(result, messages, { batchId });
 
     const settings = this.settingsStore.load();
 

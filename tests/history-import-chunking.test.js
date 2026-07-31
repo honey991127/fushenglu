@@ -114,8 +114,9 @@ test('介面會保存分段進度並從失敗段續作', async () => {
   );
 
   assert.match(source, /historyImportProgress/);
-  assert.match(source, /nextChunkIndex/);
-  assert.match(source, /completedChunks/);
+  assert.match(source, /completedChunkIndexes/);
   assert.match(source, /failedChunkIndex/);
+  assert.doesNotMatch(source, /nextChunkIndex/);
+  assert.doesNotMatch(source, /mergedAnalysis: createEmptyAnalysisResult/);
   assert.match(source, /第 \$\{chunkIndex \+ 1\}／\$\{chunks\.length\} 段/);
 });
