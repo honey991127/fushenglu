@@ -4,7 +4,7 @@ import {
   rebuildCharacterState,
 } from './character-state.js';
 
-export const CHAT_STATE_SCHEMA_VERSION = 4;
+export const CHAT_STATE_SCHEMA_VERSION = 5;
 
 const BATCH_STATUSES = new Set([
   'draft',
@@ -101,6 +101,60 @@ function createHistoryImportProgress() {
   };
 }
 
+function createWorldRules() {
+  return { schemaVersion: 1, entries: [] };
+}
+
+function createPendingDecisionRecords() {
+  return [];
+}
+
+function relationshipEntries(character) {
+  return Object.values(character.entities.byId).flatMap((entity) =>
+    Object.entries(entity.relationships ?? {}).map(([targetEntityId, value]) => ({
+      schemaVersion: 1,
+      sourceEntityId: entity.entityId,
+      targetEntityId,
+      ...clone(value),
+    })),
+  );
+}
+
+function createEventLedger(events, updatedAt = null) {
+  const visibleEvents = events.filter((event) => event && typeof event.eventId === 'string');
+  return {
+    schemaVersion: 1,
+    eventIds: visibleEvents.map((event) => event.eventId),
+    deletedEventIds: visibleEvents.filter((event) => event.deletedAt !== null).map((event) => event.eventId),
+    rebuiltAt: updatedAt,
+  };
+}
+
+function createDerivedState(events, updatedAt = null) {
+  const character = rebuildCharacterState(events);
+  return {
+    character,
+    currentSnapshot: {
+      schemaVersion: 1,
+      character: clone(character),
+      sourceEventIds: events
+        .filter((event) => event?.deletedAt === null && typeof event.eventId === 'string')
+        .map((event) => event.eventId),
+      rebuiltAt: updatedAt,
+    },
+    entities: clone(character.entities),
+    relationships: {
+      schemaVersion: 1,
+      entries: relationshipEntries(character),
+    },
+    eventLedger: createEventLedger(events, updatedAt),
+  };
+}
+
+function createEmptyDerivedState() {
+  return createDerivedState([], null);
+}
+
 export function createChatState(timestamp = new Date().toISOString()) {
   requireTimestamp(timestamp);
 
@@ -115,7 +169,10 @@ export function createChatState(timestamp = new Date().toISOString()) {
     handoffItems: [],
     committedBatchIds: [],
     character: createCharacterState(),
+    ...createEmptyDerivedState(),
+    worldRules: createWorldRules(),
     historyImportProgress: createHistoryImportProgress(),
+    pendingDecisionRecords: createPendingDecisionRecords(),
     testState: createTestState(),
     legacy: createLegacyState(),
   };
@@ -334,41 +391,28 @@ function normalizeV2(rawState) {
   };
 }
 
-function normalizeV3(rawState) {
-  const normalized = normalizeV2(rawState);
-
-  if (!rawState.character || ![1, CHARACTER_STATE_SCHEMA_VERSION].includes(rawState.character.schemaVersion)) {
-    throw new ChatStateMigrationError('character.schemaVersion 無效');
-  }
-
-  const rebuiltCharacter = rebuildCharacterState(normalized.events);
-
-  return {
-    ...normalized,
-    schemaVersion: 3,
-    character: rebuiltCharacter,
-  };
-}
-
-function migrateV3State(rawState) {
-  const normalized = normalizeV3(rawState);
-  return {
-    ...normalized,
-    schemaVersion: CHAT_STATE_SCHEMA_VERSION,
-    // V3 only stored chunk counts; it is unsafe after a branch/edit/pipeline change.
-    historyImportProgress: createHistoryImportProgress(),
-    character: rebuildCharacterState(normalized.events),
-  };
-}
-
 function normalizeV4(rawState) {
-  const migrated = migrateV3State({ ...rawState, schemaVersion: 3 });
+  const normalized = normalizeV2({ ...rawState, schemaVersion: 2 });
+  const rawCharacter = rawState.character;
+  if (
+    rawCharacter !== undefined &&
+    (!rawCharacter || ![1, CHARACTER_STATE_SCHEMA_VERSION].includes(rawCharacter.schemaVersion))
+  ) {
+    throw new ChatStateMigrationError('character.schemaVersion invalid');
+  }
   const progress = rawState.historyImportProgress ?? createHistoryImportProgress();
-  if (!progress || progress.schemaVersion !== 1 || !Array.isArray(progress.chunkBoundaries) || !Array.isArray(progress.completedChunkIndexes)) {
-    throw new ChatStateMigrationError('historyImportProgress 格式無效');
+  if (
+    !progress ||
+    progress.schemaVersion !== 1 ||
+    !Array.isArray(progress.chunkBoundaries) ||
+    !Array.isArray(progress.completedChunkIndexes)
+  ) {
+    throw new ChatStateMigrationError('historyImportProgress format invalid');
   }
   return {
-    ...migrated,
+    ...normalized,
+    schemaVersion: 4,
+    ...createDerivedState(normalized.events, normalized.updatedAt),
     historyImportProgress: {
       ...createHistoryImportProgress(),
       ...clone(progress),
@@ -377,14 +421,84 @@ function normalizeV4(rawState) {
   };
 }
 
-function migrateV2State(rawState) {
-  const normalized = normalizeV2(rawState);
+function normalizeRootObject(raw, field) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new ChatStateMigrationError(field + ' format invalid');
+  }
+  return raw;
+}
 
+function normalizeWorldRules(raw) {
+  const value = normalizeRootObject(raw, 'worldRules');
+  if (value.schemaVersion !== 1) throw new ChatStateMigrationError('worldRules.schemaVersion invalid');
+  return { schemaVersion: 1, entries: requireVersionedEntities(requireArray(value.entries, 'worldRules.entries'), 'worldRules.entries') };
+}
+
+function normalizeEntities(raw) {
+  const value = normalizeRootObject(raw, 'entities');
+  if (value.schemaVersion !== 1 || !value.byId || typeof value.byId !== 'object' || Array.isArray(value.byId) || typeof value.playerEntityId !== 'string') {
+    throw new ChatStateMigrationError('entities format invalid');
+  }
+  for (const [entityId, entity] of Object.entries(value.byId)) {
+    if (!entity || entity.schemaVersion !== 1 || entity.entityId !== entityId) {
+      throw new ChatStateMigrationError('entities.byId format invalid');
+    }
+  }
+  return clone(value);
+}
+
+function normalizeRelationships(raw) {
+  const value = normalizeRootObject(raw, 'relationships');
+  if (value.schemaVersion !== 1) throw new ChatStateMigrationError('relationships.schemaVersion invalid');
+  return { schemaVersion: 1, entries: requireVersionedEntities(requireArray(value.entries, 'relationships.entries'), 'relationships.entries') };
+}
+
+function normalizeSnapshot(raw, events) {
+  const value = normalizeRootObject(raw, 'currentSnapshot');
+  if (value.schemaVersion !== 1 || !Array.isArray(value.sourceEventIds)) {
+    throw new ChatStateMigrationError('currentSnapshot format invalid');
+  }
+  return createDerivedState(events, value.rebuiltAt ?? null).currentSnapshot;
+}
+
+function normalizeEventLedger(raw) {
+  const value = normalizeRootObject(raw, 'eventLedger');
+  if (value.schemaVersion !== 1 || !Array.isArray(value.eventIds) || !Array.isArray(value.deletedEventIds)) {
+    throw new ChatStateMigrationError('eventLedger format invalid');
+  }
   return {
-    ...normalized,
+    schemaVersion: 1,
+    eventIds: value.eventIds.map(String),
+    deletedEventIds: value.deletedEventIds.map(String),
+    rebuiltAt: requireOptionalTimestamp(value.rebuiltAt ?? null, 'eventLedger.rebuiltAt'),
+  };
+}
+
+function normalizeV5(rawState) {
+  const v4 = normalizeV4({ ...rawState, schemaVersion: 4 });
+  return {
+    ...v4,
+    schemaVersion: 5,
+    worldRules: normalizeWorldRules(rawState.worldRules),
+    entities: normalizeEntities(rawState.entities),
+    relationships: normalizeRelationships(rawState.relationships),
+    currentSnapshot: normalizeSnapshot(rawState.currentSnapshot, v4.events),
+    eventLedger: normalizeEventLedger(rawState.eventLedger),
+    pendingDecisionRecords: requireVersionedEntities(
+      requireArray(rawState.pendingDecisionRecords, 'pendingDecisionRecords'),
+      'pendingDecisionRecords',
+    ),
+  };
+}
+
+function migrateV4ToV5(rawState) {
+  const v4 = normalizeV4({ ...rawState, schemaVersion: 4 });
+  return {
+    ...v4,
     schemaVersion: CHAT_STATE_SCHEMA_VERSION,
-    character: rebuildCharacterState(normalized.events),
-    historyImportProgress: createHistoryImportProgress(),
+    ...createDerivedState(v4.events, v4.updatedAt),
+    worldRules: createWorldRules(),
+    pendingDecisionRecords: createPendingDecisionRecords(),
   };
 }
 
@@ -405,64 +519,57 @@ function migrateLegacyState(rawState, sourceVersion, timestamp) {
 
 export function migrateChatState(rawState, timestamp = new Date().toISOString()) {
   requireTimestamp(timestamp);
-
   if (rawState === undefined || rawState === null) {
-    return {
-      state: createChatState(timestamp),
-      created: true,
-      migrated: false,
-      fromVersion: null,
-    };
+    return { state: createChatState(timestamp), created: true, migrated: false, fromVersion: null };
   }
-
   if (typeof rawState !== 'object' || Array.isArray(rawState)) {
-    throw new ChatStateMigrationError('聊天儲存資料格式無效，已停止覆寫');
+    throw new ChatStateMigrationError('chat state format invalid; overwrite stopped');
   }
-
   const sourceVersion = rawState.schemaVersion ?? 0;
-
   if (!Number.isInteger(sourceVersion) || sourceVersion < 0) {
-    throw new ChatStateMigrationError('schemaVersion 必須是非負整數');
+    throw new ChatStateMigrationError('schemaVersion must be a non-negative integer');
   }
-
   if (sourceVersion > CHAT_STATE_SCHEMA_VERSION) {
-    throw new ChatStateMigrationError(
-      `資料版本 ${sourceVersion} 高於目前支援版本 ${CHAT_STATE_SCHEMA_VERSION}，已停止覆寫`,
-    );
+    throw new ChatStateMigrationError('future schemaVersion; overwrite stopped');
   }
-
-  if (sourceVersion === 2) {
-    return {
-      state: migrateV2State(rawState),
-      created: false,
-      migrated: true,
-      fromVersion: sourceVersion,
-    };
+  if (sourceVersion < 2) {
+    return { state: migrateLegacyState(rawState, sourceVersion, timestamp), created: false, migrated: true, fromVersion: sourceVersion };
   }
-
-  if (sourceVersion === 3) {
-    return {
-      state: migrateV3State(rawState),
-      created: false,
-      migrated: true,
-      fromVersion: sourceVersion,
-    };
-  }
-
   if (sourceVersion < CHAT_STATE_SCHEMA_VERSION) {
-    return {
-      state: migrateLegacyState(rawState, sourceVersion, timestamp),
-      created: false,
-      migrated: true,
-      fromVersion: sourceVersion,
-    };
+    return { state: migrateV4ToV5(rawState), created: false, migrated: true, fromVersion: sourceVersion };
   }
+  return { state: normalizeV5(rawState), created: false, migrated: false, fromVersion: CHAT_STATE_SCHEMA_VERSION };
+}
 
+export function rebuildChatStateSnapshot(state, timestamp = null) {
+  const normalized = validateChatState(state);
   return {
-    state: normalizeV4(rawState),
-    created: false,
-    migrated: false,
-    fromVersion: CHAT_STATE_SCHEMA_VERSION,
+    ...normalized,
+    ...createDerivedState(normalized.events, timestamp ?? normalized.updatedAt),
+  };
+}
+
+export function resetCurrentChatData(state, {
+  preserveWorldRules = true,
+  timestamp = new Date().toISOString(),
+} = {}) {
+  const normalized = validateChatState(state, timestamp);
+  const empty = createChatState(timestamp);
+  return {
+    ...normalized,
+    updatedAt: requireTimestamp(timestamp),
+    draftActions: [],
+    sync: createSyncState(),
+    batches: [],
+    events: [],
+    pendingItems: [],
+    handoffItems: [],
+    committedBatchIds: [],
+    testState: createTestState(),
+    historyImportProgress: createHistoryImportProgress(),
+    pendingDecisionRecords: createPendingDecisionRecords(),
+    ...createEmptyDerivedState(),
+    worldRules: preserveWorldRules ? clone(normalized.worldRules) : createWorldRules(),
   };
 }
 

@@ -4,7 +4,7 @@ import {
   mergeAnalysisResults,
   splitAnalysisMessages,
 } from '../core/analysis-schema.8252ea5a6bb2.js';
-import { createCharacterAction } from '../core/character-state.6ba348f10062.js';
+import { createCharacterAction } from '../core/character-state.a8c46e617c6b.js';
 import {
   analysisResultFromBatch,
   listIncompleteProposals,
@@ -31,8 +31,8 @@ import {
   updateBatchProposal,
   updateHandoffItem,
   normalizeChatMessages,
-} from '../core/turn-sync.8f3d80e31b03.js';
-import { NoActiveChatError } from '../integrations/tauritavern.f9a00dcea6e3.js';
+} from '../core/turn-sync.4d992cf84e7a.js';
+import { NoActiveChatError } from '../integrations/tauritavern.501d7e149517.js';
 import {
   APP_VERSION,
   MANIFEST_VERSION,

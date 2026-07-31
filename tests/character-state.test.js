@@ -41,6 +41,6 @@ test('V3 safely migrates to V4 and future state remains protected', () => {
   const migrated = migrateChatState(v3, at);
   assert.equal(migrated.state.schemaVersion, CHAT_STATE_SCHEMA_VERSION);
   assert.equal(migrated.state.historyImportProgress.pipelineVersion, 2);
-  assert.throws(() => migrateChatState({ schemaVersion: 5 }, at), /停止覆寫/);
+  assert.throws(() => migrateChatState({ schemaVersion: 6 }, at), /future schemaVersion/);
   assert.equal(createCharacterState().schemaVersion, 2);
 });

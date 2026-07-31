@@ -54,7 +54,7 @@ function applyAsset(state, event) {
   const value = event.value ?? {};
   const player = state.entities.playerEntityId;
   const owner = clean(event.subjectEntityId ?? value.ownerEntityId ?? value.owner ?? value.subject);
-  if (owner && owner !== player && owner !== 'player') return; // Mentioned/NPC property never becomes player inventory.
+  if (owner !== player && owner !== 'player') return; // Missing, mentioned, and NPC ownership never become player inventory.
   if (!MAIN.has(event.timelineContext) || value.negated || value.quantityUnknown) return;
   const name = optional(value.name ?? value.item ?? value.currency);
   const amount = number(value.quantity ?? value.amount ?? value.value);

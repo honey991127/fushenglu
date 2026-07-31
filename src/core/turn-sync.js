@@ -3,10 +3,8 @@ import {
   assertAnalysisResult,
   createEmptyAnalysisResult,
 } from './analysis-schema.js';
-import {
-  actionRequiresPending,
-  rebuildCharacterState,
-} from './character-state.js';
+import { actionRequiresPending } from './character-state.js';
+import { rebuildChatStateSnapshot } from './chat-state.js';
 import {
   inspectProposalPayload,
 } from './proposal-repair.js';
@@ -1165,7 +1163,7 @@ export function commitBatch(
   return stateWithTimestamp(
     {
       ...next,
-      character: rebuildCharacterState(next.events),
+      ...rebuildChatStateSnapshot(next),
     },
     timestamp,
   );
@@ -1530,7 +1528,7 @@ export function resolvePendingItem(
   return stateWithTimestamp(
     {
       ...next,
-      character: rebuildCharacterState(next.events),
+      ...rebuildChatStateSnapshot(next),
     },
     timestamp,
   );
@@ -1631,7 +1629,7 @@ export function undoLatestCommittedBatch(
   });
   next.committedBatchIds.push(batchId);
   next.testState.updatedAt = timestamp;
-  next.character = rebuildCharacterState(next.events);
+  Object.assign(next, rebuildChatStateSnapshot(next));
   return stateWithTimestamp(next, timestamp);
 }
 
