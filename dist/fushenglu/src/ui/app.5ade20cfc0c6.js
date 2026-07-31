@@ -4,7 +4,7 @@ import {
   mergeAnalysisResults,
   splitAnalysisMessages,
 } from '../core/analysis-schema.8252ea5a6bb2.js';
-import { createCharacterAction } from '../core/character-state.ba690c468c51.js';
+import { createCharacterAction } from '../core/character-state.248f6757f446.js';
 import {
   buildRollingContext,
   canResumeHistoryImport,
@@ -37,8 +37,8 @@ import {
   updateBatchProposal,
   updateHandoffItem,
   normalizeChatMessages,
-} from '../core/turn-sync.f536cb0fec1c.js';
-import { NoActiveChatError } from '../integrations/tauritavern.b95cd9159749.js';
+} from '../core/turn-sync.c408ea65b41c.js';
+import { NoActiveChatError } from '../integrations/tauritavern.acef06b84ebb.js';
 import {
   APP_VERSION,
   MANIFEST_VERSION,

@@ -3,8 +3,8 @@ import {
   assertAnalysisResult,
   createEmptyAnalysisResult,
 } from './analysis-schema.8252ea5a6bb2.js';
-import { actionRequiresPending } from './character-state.ba690c468c51.js';
-import { rebuildChatStateSnapshot } from './chat-state.06f9c85cf52c.js';
+import { actionRequiresPending } from './character-state.248f6757f446.js';
+import { rebuildChatStateSnapshot } from './chat-state.e200863a8b54.js';
 import { applyAnalysisPolicy } from './analysis-policy.f7f8e3ed9cbc.js';
 import { createFactKey } from './fact-key.0f9d5b48a24e.js';
 import { createEventId } from './event-id.d553cbd953d1.js';
@@ -1133,6 +1133,7 @@ export function commitBatch(
       ...state,
       events: [...state.events, ...newEvents],
       pendingItems: [...state.pendingItems, ...newPending],
+      pendingDecisionRecords: [...(state.pendingDecisionRecords ?? []), ...newPending.map((pending) => ({ schemaVersion: 1, pendingId: pending.pendingId, reasonCode: pending.reasonCode, proposal: clone(pending.proposal), createdAt: pending.createdAt }))],
       committedBatchIds: [...state.committedBatchIds, batchId],
       testState: {
         ...state.testState,

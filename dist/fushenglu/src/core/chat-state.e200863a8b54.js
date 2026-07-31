@@ -2,8 +2,8 @@ import {
   CHARACTER_STATE_SCHEMA_VERSION,
   createCharacterState,
   rebuildCharacterState,
-} from './character-state.ba690c468c51.js';
-import { rebuildCurrentSnapshot } from './snapshot-reducer.e783d89f4a0d.js';
+} from './character-state.248f6757f446.js';
+import { rebuildCurrentSnapshot } from './snapshot-reducer.89fe66760214.js';
 
 export const CHAT_STATE_SCHEMA_VERSION = 5;
 

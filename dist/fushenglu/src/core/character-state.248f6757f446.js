@@ -131,6 +131,7 @@ export function rebuildCharacterState(events = []) {
 export function actionRequiresPending(_state, action) {
   const value = action.value ?? {};
   if (value.identityAmbiguous || value.ownershipAmbiguous || value.conflict || value.inferred || value.quantityUnknown || value.negatedAmbiguous) return true;
+  if (action.kind === 'inventory' && ['consume', 'subtract'].includes(action.operation)) { const owner = clean(action.subjectEntityId ?? value.ownerEntityId); const name = optional(value.name ?? value.item); const requested = number(value.quantity?.exact ?? value.quantity); const asset = state.currentSnapshot?.assets?.find((item) => item.current && item.ownerEntityId === owner && item.canonicalName === name); if (!asset || requested === null || asset.quantity?.exact === null || requested > asset.quantity.exact) return true; }
   if (['memory', 'quote', 'dream', 'hypothetical', 'unknown'].includes(action.timelineContext) && ['inventory', 'currency'].includes(action.kind)) return true;
   return false;
 }

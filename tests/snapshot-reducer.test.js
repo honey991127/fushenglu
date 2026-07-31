@@ -81,3 +81,59 @@ test('rebuild is deterministic and uses structured source order', () => {
   assert.equal(first.currentTime, '申時');
   assert.deepEqual(first, second);
 });
+test('asset operations move, transfer, return, remove, set, and clear preserve ledger semantics', () => {
+  const events = [
+    event({ eventId: 'acquire', operation: 'acquire', sourceOrder: { messageIndex: 1, evidenceOrder: 0 }, value: { name: '��', ownership: 'borrowed', quantity: { exact: 2, unit: '�U' } } }),
+    event({ eventId: 'move', operation: 'move', sourceOrder: { messageIndex: 1, evidenceOrder: 1 }, value: { name: '��', container: { type: 'room', display: '�c�l' } } }),
+    event({ eventId: 'transfer', operation: 'transfer', sourceOrder: { messageIndex: 1, evidenceOrder: 2 }, value: { name: '��', targetOwnerEntityId: 'entity:npc:li' } }),
+  ];
+  let snapshot = rebuildCurrentSnapshot(events);
+  assert.equal(snapshot.assets.filter((asset) => asset.current && asset.ownerEntityId === 'entity:player').length, 0);
+  assert.equal(snapshot.assets.filter((asset) => asset.current && asset.ownerEntityId === 'entity:npc:li').length, 1);
+  assert.equal(snapshot.assets.find((asset) => asset.current).container.type, 'room');
+  assert.equal(snapshot.assets.find((asset) => asset.current).ownership, 'borrowed');
+  snapshot = rebuildCurrentSnapshot(events.map((item) => item.eventId === 'transfer' ? { ...item, deletedAt: '2026-01-01T00:00:00.000Z' } : item));
+  assert.equal(snapshot.assets.find((asset) => asset.current).ownerEntityId, 'entity:player');
+  assert.equal(snapshot.assets.find((asset) => asset.current).container.type, 'room');
+  const returned = rebuildCurrentSnapshot([...events.slice(0, 2), event({ eventId: 'return', operation: 'return', sourceOrder: { messageIndex: 2, evidenceOrder: 0 }, value: { name: '��' } })]);
+  assert.equal(returned.assets.some((asset) => asset.current), false);
+  for (const operation of ['discard', 'lose', 'destroy', 'clear']) {
+    const removed = rebuildCurrentSnapshot([events[0], event({ eventId: operation, operation, sourceOrder: { messageIndex: 2, evidenceOrder: 0 }, value: { name: '��' } })]);
+    assert.equal(removed.assets.some((asset) => asset.current), false, operation);
+  }
+  const set = rebuildCurrentSnapshot([events[0], event({ eventId: 'set', operation: 'set', sourceOrder: { messageIndex: 3, evidenceOrder: 0 }, value: { name: '��', ownership: 'borrowed', quantity: { exact: 5, unit: '�U' } } })]);
+  assert.equal(set.assets.find((asset) => asset.current).quantity.exact, 5);
+});
+
+test('ownership, container, and currency identity never infer player ownership or world aliases', () => {
+  const snapshot = rebuildCurrentSnapshot([
+    event({ eventId: 'room-owned', value: { name: '�C', ownership: 'owned', container: { type: 'room', display: '�c�l' }, quantity: { exact: 1 } } }),
+    event({ eventId: 'custody', value: { name: '�L', ownership: 'custody', quantity: { exact: 1 } } }),
+    event({ eventId: 'temporary', value: { name: '��', ownership: 'temporary', quantity: { exact: 1 } } }),
+    event({ eventId: 'top', kind: 'currency', value: { name: '�F��', tier: '�W�~', amount: 1, unit: '�T' } }),
+    event({ eventId: 'bottom', kind: 'currency', value: { name: '�F��', tier: '�U�~', amount: 1, unit: '�T' } }),
+    event({ eventId: 'note', kind: 'currency', value: { name: '�Ȳ�', amount: 1, unit: '�i' } }),
+    event({ eventId: 'silver', kind: 'currency', value: { name: '�Ȩ�', amount: 1, unit: '��' } }),
+    event({ eventId: 'no-owner', subjectEntityId: null, kind: 'currency', value: { name: '��', amount: 1 } }),
+  ]);
+  assert.equal(snapshot.assets.find((asset) => asset.canonicalName === '�C').container.type, 'room');
+  assert.deepEqual(snapshot.assets.map((asset) => asset.ownership).sort(), ['custody', 'owned', 'temporary']);
+  assert.equal(snapshot.currencies.length, 4);
+  assert.equal(snapshot.currencies.some((currency) => currency.name === '��'), false);
+});
+
+test('durable and transient state use local keys and latest source order', () => {
+  const events = [
+    event({ eventId: 'hurt', kind: 'person_state', subjectEntityId: 'entity:npc:li', sourceOrder: { messageIndex: 1, evidenceOrder: 0 }, value: { status: '����' } }),
+    event({ eventId: 'surprised', kind: 'person_state', subjectEntityId: 'entity:npc:li', sourceOrder: { messageIndex: 1, evidenceOrder: 1 }, value: { status: '��Y', transient: true, dimension: 'mood' } }),
+    event({ eventId: 'calm', kind: 'person_state', subjectEntityId: 'entity:npc:li', sourceOrder: { messageIndex: 2, evidenceOrder: 0 }, value: { status: '���R', transient: true, dimension: 'mood' } }),
+    event({ eventId: 'heal', kind: 'person_state', operation: 'resolve', subjectEntityId: 'entity:npc:li', sourceOrder: { messageIndex: 3, evidenceOrder: 0 }, value: { status: '����' } }),
+  ];
+  const resolved = rebuildCurrentSnapshot(events).entities['entity:npc:li'];
+  assert.equal(resolved.durableStatuses.length, 0);
+  assert.equal(resolved.durableStatusHistory[0].state, 'resolved');
+  assert.equal(resolved.transientStates.mood.label, '���R');
+  const restored = rebuildCurrentSnapshot(events.map((item) => item.eventId === 'heal' ? { ...item, deletedAt: '2026-01-01T00:00:00.000Z' } : item)).entities['entity:npc:li'];
+  assert.equal(restored.durableStatuses[0].state, 'active');
+  assert.match(restored.durableStatuses[0].statusKey, /^entity:npc:li:/);
+});

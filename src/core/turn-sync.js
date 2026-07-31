@@ -1133,6 +1133,7 @@ export function commitBatch(
       ...state,
       events: [...state.events, ...newEvents],
       pendingItems: [...state.pendingItems, ...newPending],
+      pendingDecisionRecords: [...(state.pendingDecisionRecords ?? []), ...newPending.map((pending) => ({ schemaVersion: 1, pendingId: pending.pendingId, reasonCode: pending.reasonCode, proposal: clone(pending.proposal), createdAt: pending.createdAt }))],
       committedBatchIds: [...state.committedBatchIds, batchId],
       testState: {
         ...state.testState,
