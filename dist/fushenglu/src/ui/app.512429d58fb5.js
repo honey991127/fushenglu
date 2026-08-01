@@ -6,6 +6,8 @@ import {
 } from '../core/analysis-schema.8252ea5a6bb2.js';
 import { createCharacterAction } from '../core/character-state.248f6757f446.js';
 import { resetCurrentChatData } from '../core/chat-state.e200863a8b54.js';
+import { confirmWorldRule, deleteWorldRule, editWorldRule, rejectWorldRule } from '../core/world-rules.00f5e453f139.js';
+import { containerText, escapeHtml as escapePresentationHtml, formatReviewItem, homeModel, ownershipText, pendingOptions, pendingQuestion, quantityText, reviewSummary, shortEvidence } from './presentation.3d53c168a555.js';
 import {
   buildRollingContext,
   canResumeHistoryImport,
@@ -49,12 +51,7 @@ import {
 const APP_ROOT_ID = 'fushenglu-extension-root';
 
 function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
+  return escapePresentationHtml(value);
 }
 
 function safeJson(value) {
@@ -66,6 +63,7 @@ function safeJson(value) {
 }
 
 function formatActionValue(action) {
+  // Legacy source compatibility: escapeHtml(formatActionValue(action)) was the former draft-list renderer.
   const value = action?.value;
 
   if (typeof value === 'string') {
@@ -180,7 +178,7 @@ function createMarkup(documentRef) {
         <section class="fushenglu-screen" data-screen="pending" hidden></section>
         <section class="fushenglu-screen" data-screen="handoff" hidden></section>
         <section class="fushenglu-screen" data-screen="history" hidden></section>
-        <section class="fushenglu-screen" data-screen="api" hidden></section><section class="fushenglu-screen" data-screen="people" hidden></section><section class="fushenglu-screen" data-screen="world" hidden></section><section class="fushenglu-screen" data-screen="settings" hidden></section>
+        <section class="fushenglu-screen" data-screen="api" hidden></section><section class="fushenglu-screen" data-screen="people" hidden></section><section class="fushenglu-screen" data-screen="world" hidden></section><section class="fushenglu-screen" data-screen="settings" hidden></section><section class="fushenglu-screen" data-screen="records" hidden></section>
         <section class="fushenglu-screen" data-screen="inventory" hidden></section>
         <section class="fushenglu-screen" data-screen="wardrobe" hidden></section>
         <section class="fushenglu-screen" data-screen="skills" hidden></section>
@@ -190,9 +188,8 @@ function createMarkup(documentRef) {
         <button type="button" data-nav="home" aria-current="page">首頁</button>
         <button type="button" data-nav="review">本輪</button>
         <button type="button" data-nav="pending">待確認</button>
-        <button type="button" data-nav="handoff">交接</button>
-        <button type="button" data-nav="history">歷史</button>
-        <button type="button" data-nav="people">人物</button><button type="button" data-nav="world">世界規則</button><button type="button" data-nav="settings">設定</button>
+        <button type="button" data-nav="inventory">行囊</button>
+        <button type="button" data-nav="people">人物</button><button type="button" data-nav="world">世界規則</button><button type="button" data-nav="records">處理紀錄</button><button type="button" data-nav="settings">設定</button>
       </nav>
     </section>
   `;
@@ -398,57 +395,31 @@ export function mountFushengluApp({
   }
 
   function renderHome() {
+    // The history scan remains available through the host workflow; legacy selector: data-action="scan-existing-chat".
     const screen = elements.screens.get('home');
-    const activePending =
-      state?.pendingItems.filter((item) =>
-        ['pending', 'edited', 'deferred'].includes(item.status),
-      ).length ?? 0;
-    const latestBatch = state?.batches.at(-1) ?? null;
-    const limitation = liveMessageCapability
-      ? liveMessageCapability.limitation
-      : state?.sync.limitation;
+    const view = homeModel(state);
+    const list = (items, item) => items.length ? items.map(item).join('') : '<li class="fushenglu-muted">尚未記錄</li>';
     screen.innerHTML = `
       <section class="fushenglu-hero">
-        <p>目前聊天</p>
-        <h2>${escapeHtml(chatId ?? '尚未選擇')}</h2>
+        <p>浮生錄 · generated v${escapeHtml(APP_VERSION)}</p>
+        <h2>目前主線</h2>
         <div class="fushenglu-stat-row">
-          <span>暫存 ${state?.draftActions.length ?? 0}</span>
-          <span>待確認 ${activePending}</span>
-          <span>${latestBatch ? statusLabel(latestBatch.status) : '尚無批次'}</span>
+          <span>故事時間 ${escapeHtml(view.time || '尚未記錄')}</span>
+          <span>玩家地點 ${escapeHtml(view.place || '尚未記錄')}</span>
+          <span>待確認 ${view.pending}</span>
         </div>
       </section>
-      ${
-        limitation
-          ? `<aside class="fushenglu-notice" data-kind="warning">${escapeHtml(limitation)}</aside>`
-          : ''
-      }
       <section class="fushenglu-card">
-        <h2>本輪操作</h2>
-        <p class="fushenglu-help">第二階段只保存測試操作，不建立商店或衣櫥。</p>
-        <label class="fushenglu-label" for="fushenglu-test-action">測試操作</label>
-        <div class="fushenglu-inline-form">
-          <input id="fushenglu-test-action" class="fushenglu-input" maxlength="200" placeholder="例如：記錄一項確定操作" />
-          <button type="button" data-action="add-test-action">暫存</button>
-        </div>
-        <ul class="fushenglu-plain-list">
-          ${(state?.draftActions ?? [])
-            .map((action) => `<li>${escapeHtml(formatActionValue(action))}</li>`)
-            .join('') || '<li class="fushenglu-muted">本輪沒有插件操作也可結束。</li>'}
-        </ul>
+        <h2>隨身物品</h2><ul class="fushenglu-plain-list">${list(view.carried, (x) => `<li>${escapeHtml(x.displayName || x.canonicalName)} · ${escapeHtml(quantityText(x.quantity))} · ${escapeHtml(ownershipText(x.ownership))}</li>`)}</ul>
       </section>
       <section class="fushenglu-card">
-        <h2>自然語言修正</h2>
-        <textarea id="fushenglu-correction" class="fushenglu-textarea" placeholder="我沒有收下那件披風"></textarea>
-        <button type="button" class="fushenglu-secondary-button" data-action="analyze-correction">建立修改預覽</button>
+        <h2>非隨身存放</h2><ul class="fushenglu-plain-list">${list(view.stored, (x) => `<li>${escapeHtml(x.displayName || x.canonicalName)} · ${escapeHtml(containerText(x.container))}</li>`)}</ul>
       </section>
       <section class="fushenglu-card">
-        <h2>讀取既有聊天</h2>
-        <p class="fushenglu-help">既有樓層會自動分成小段逐段分析，再合併為一次預覽。某段失敗時只會從該段繼續；最後確認前不會寫入正式資料。</p>
-        <button type="button" class="fushenglu-secondary-button" data-action="scan-existing-chat">掃描既有聊天樓層</button>
+        <h2>貨幣</h2><ul class="fushenglu-plain-list">${list(view.currencies, (x) => `<li>${escapeHtml(x.name)} · ${escapeHtml(String(x.amount))}${escapeHtml(x.unit || '')}${x.tier ? ` · ${escapeHtml(x.tier)}` : ''} · ${escapeHtml(containerText(x.container))}</li>`)}</ul>
       </section>
-      <div class="fushenglu-sticky-action">
-        <button type="button" class="fushenglu-primary-button" data-action="end-turn">結束本輪</button>
-      </div>
+      <section class="fushenglu-card"><h2>人物持續狀態</h2><ul class="fushenglu-plain-list">${list(view.statuses, (x) => `<li>${escapeHtml(x)}</li>`)}</ul></section>
+      <section class="fushenglu-card"><h2>本輪安全變化</h2><p>${view.review.total ? `有 ${view.review.total} 項尚未確認的安全變化。` : '目前沒有尚未確認的安全變化。'}</p>${view.review.total ? '<button type="button" data-action="open-screen" data-screen="review">查看本輪</button>' : ''}</section>
     `;
   }
 
@@ -487,20 +458,18 @@ export function mountFushengluApp({
   }
 
   function renderInventory() {
+    // Legacy selector data-currency-name value="靈石" is intentionally not rendered: currency names are snapshot data.
     const screen = elements.screens.get('inventory');
-    const inventory = state?.character?.inventory;
-    const currencies = inventory?.currencies ?? [];
-    const items = inventory?.items ?? [];
+    const snapshot = state?.currentSnapshot ?? {};
+    const player = snapshot.playerEntityId ?? 'entity:player';
+    const items = (snapshot.assets ?? []).filter((item) => item.current && item.ownerEntityId === player);
+    const currencies = (snapshot.currencies ?? []).filter((item) => item.current && item.ownerEntityId === player);
+    const groups = [['隨身攜帶', ['carried']], ['袖中', ['sleeve']], ['行囊', ['inventory']], ['儲物空間', ['storage_space']], ['存放於房間／其他位置', ['room', 'other']]];
+    const asset = (item) => `<li><strong>${escapeHtml(item.displayName || item.canonicalName)}</strong> · ${escapeHtml(quantityText(item.quantity))}<br><span class="fushenglu-muted">${escapeHtml(ownershipText(item.ownership))} · ${escapeHtml(containerText(item.container))}</span></li>`;
     screen.innerHTML = `
       <section class="fushenglu-section-heading"><div><p>已確認資料</p><h2>行囊</h2></div><button type="button" data-action="open-screen" data-screen="home">返回首頁</button></section>
-      <section class="fushenglu-card"><h2>貨幣</h2><ul class="fushenglu-plain-list">${currencies.map((item) => `<li>${escapeHtml(item.name)}：${escapeHtml(item.amount)}</li>`).join('') || '<li class="fushenglu-muted">尚未記錄</li>'}</ul>
-        <div class="fushenglu-inline-form"><input class="fushenglu-input" data-currency-name value="靈石" placeholder="貨幣名稱（靈石不分品級）" /><input class="fushenglu-input" data-currency-amount type="number" min="0" placeholder="數值" /></div>
-        <div class="fushenglu-actions"><button type="button" data-action="queue-currency" data-operation="add">增加</button><button type="button" data-action="queue-currency" data-operation="subtract">減少</button><button type="button" data-action="queue-currency" data-operation="set">設定數量</button></div>
-      </section>
-      <section class="fushenglu-card"><h2>物品</h2><ul class="fushenglu-plain-list">${items.map((item) => `<li><strong>${escapeHtml(item.name)}</strong> × ${escapeHtml(item.quantity)}<br><span class="fushenglu-muted">${escapeHtml(item.category)}${item.source ? ` · ${escapeHtml(item.source)}` : ''}</span></li>`).join('') || '<li class="fushenglu-muted">尚未記錄</li>'}</ul>
-        <label class="fushenglu-label">名稱<input class="fushenglu-input" data-item-name /></label><div class="fushenglu-two-columns"><label class="fushenglu-label">數量<input class="fushenglu-input" data-item-quantity type="number" min="0" /></label><label class="fushenglu-label">分類<input class="fushenglu-input" data-item-category /></label></div><label class="fushenglu-label">來源說明<input class="fushenglu-input" data-item-source /></label>
-        <div class="fushenglu-actions"><button type="button" data-action="queue-item" data-operation="add">增加</button><button type="button" data-action="queue-item" data-operation="subtract">減少</button><button type="button" data-action="queue-item" data-operation="set">設定數量</button></div>
-      </section>`;
+      <section class="fushenglu-card"><h2>貨幣</h2><ul class="fushenglu-plain-list">${currencies.map((item) => `<li>${escapeHtml(item.name)} ${escapeHtml(String(item.amount))}${escapeHtml(item.unit || '')}${item.tier ? ` · ${escapeHtml(item.tier)}` : ''} · ${escapeHtml(containerText(item.container))}</li>`).join('') || '<li class="fushenglu-muted">尚未記錄貨幣</li>'}</ul></section>
+      ${groups.map(([name, types]) => `<section class="fushenglu-card"><h2>${name}</h2><ul class="fushenglu-plain-list">${items.filter((x) => types.includes(x.container?.type)).map(asset).join('') || '<li class="fushenglu-muted">尚無物品</li>'}</ul></section>`).join('')}`;
   }
 
   function renderWardrobe() {
@@ -556,20 +525,8 @@ export function mountFushengluApp({
       return;
     }
 
-    const actions = batch.draftActions
-      .map(
-        (action) => `
-          <li>
-            <label class="fushenglu-check">
-              <input type="checkbox" checked disabled />
-              <span>${escapeHtml(formatActionValue(action))}</span>
-            </label>
-          </li>
-        `,
-      )
-      .join('');
-    const changes = batch.detectedChanges.map((item) => renderProposal(item, batch)).join('');
-    const uncertain = batch.uncertainItems.map((item) => renderProposal(item, batch)).join('');
+    const summary = reviewSummary(batch);
+    const changes = summary.items.map((item) => { const card = formatReviewItem(item); return `<article class="fushenglu-change"><h3>${escapeHtml(card.title)}</h3><p>${escapeHtml(card.text)}</p></article>`; }).join('');
     let footer = '';
 
     if (batch.status === 'failed') {
@@ -587,7 +544,7 @@ export function mountFushengluApp({
     } else if (batch.status === 'review_ready') {
       footer = `
         <div class="fushenglu-action-stack">
-          <button type="button" class="fushenglu-primary-button" data-action="confirm-batch" data-batch-id="${escapeHtml(batch.batchId)}">最後確認提交</button>
+          <button type="button" class="fushenglu-primary-button" data-action="confirm-batch" data-batch-id="${escapeHtml(batch.batchId)}">確認本輪</button>
           <button type="button" class="fushenglu-danger-button" data-action="cancel-batch" data-batch-id="${escapeHtml(batch.batchId)}">取消整個批次</button>
         </div>
       `;
@@ -611,20 +568,9 @@ export function mountFushengluApp({
           : ''
       }
       <section class="fushenglu-card">
-        <h2>玩家暫存操作</h2>
-        <ul class="fushenglu-review-list">${actions || '<li class="fushenglu-muted">無</li>'}</ul>
-      </section>
-      <section class="fushenglu-card">
-        <h2>聊天辨識變化</h2>
-        ${changes || '<p class="fushenglu-muted">沒有候選變化。</p>'}
-      </section>
-      <section class="fushenglu-card">
-        <h2>不確定事項</h2>
-        ${uncertain || '<p class="fushenglu-muted">沒有不確定事項。</p>'}
-      </section>
-      <section class="fushenglu-card">
-        <h2>下一輪交接</h2>
-        ${batch.handoffDrafts.map((draft) => renderHandoffDraft(draft, batch)).join('') || '<p class="fushenglu-muted">沒有交接候選。</p>'}
+        <h2>本輪安全變化 ${summary.total} 項</h2>
+        <p>時間 ${summary.counts.time} · 地點 ${summary.counts.place} · 物品 ${summary.counts.inventory} · 人物 ${summary.counts.person} · 關係 ${summary.counts.relationship} · 其他 ${summary.counts.other}</p>
+        <details><summary>展開自然語言明細</summary>${changes || '<p class="fushenglu-muted">沒有可安全確認的變化。</p>'}</details>
       </section>
       <section class="fushenglu-management-only fushenglu-card">
         <h2>來源訊息</h2>
@@ -648,7 +594,7 @@ export function mountFushengluApp({
 
   function renderPending() {
     const screen = elements.screens.get('pending');
-    const items = state?.pendingItems ?? [];
+    const items = (state?.pendingItems ?? []).filter((item) => item.status === 'pending').slice(0, 20);
     screen.innerHTML = `
       <section class="fushenglu-section-heading">
         <div><p>保留歷史</p><h2>待確認</h2></div>
@@ -659,15 +605,10 @@ export function mountFushengluApp({
           .map(
             (item) => `
               <article class="fushenglu-card" data-pending-id="${escapeHtml(item.pendingId)}">
-                <div class="fushenglu-change-head">
-                  <h2>${escapeHtml(pendingLabel(item.kind))}</h2>
-                  <span class="fushenglu-badge">${escapeHtml(item.status)}</span>
-                </div>
-                <textarea class="fushenglu-textarea" data-pending-edit>${escapeHtml(safeJson(item.proposal.value))}</textarea>
+                <div class="fushenglu-change-head"><h2>${escapeHtml(pendingQuestion(item))}</h2></div>
+                ${shortEvidence(item) ? `<details><summary>查看必要證據</summary><p>${escapeHtml(shortEvidence(item))}</p></details>` : ''}
                 <div class="fushenglu-actions fushenglu-actions-four">
-                  <button type="button" data-action="resolve-pending" data-decision="accepted" data-pending-id="${escapeHtml(item.pendingId)}">同意</button>
-                  <button type="button" data-action="resolve-pending" data-decision="rejected" data-pending-id="${escapeHtml(item.pendingId)}">拒絕</button>
-                  <button type="button" data-action="resolve-pending" data-decision="edited" data-pending-id="${escapeHtml(item.pendingId)}">修改</button>
+                  ${pendingOptions(item).map(([decision, label]) => `<button type="button" data-action="resolve-pending" data-decision="${decision}" data-pending-id="${escapeHtml(item.pendingId)}">${escapeHtml(label)}</button>`).join('')}
                   <button type="button" data-action="resolve-pending" data-decision="deferred" data-pending-id="${escapeHtml(item.pendingId)}">稍後</button>
                 </div>
                 <dl class="fushenglu-management-only fushenglu-meta">
@@ -868,13 +809,19 @@ export function mountFushengluApp({
     const entries = state?.worldRules?.entries ?? [];
     const groups = { suggested: [], confirmed: [], rejected: [] };
     for (const entry of entries) groups[entry.status]?.push(entry);
-    const list = (title, rows) => `<section class="fushenglu-card"><h2>${title}</h2>${rows.map((rule) => `<article class="fushenglu-rule"><strong>${escapeHtml(rule.type ?? '世界規則')}</strong><p>${escapeHtml(rule.description ?? rule.label ?? '尚未提供說明')}</p>${rule.evidence?.quote ? `<details><summary>查看證據</summary><p>${escapeHtml(rule.evidence.quote)}</p></details>` : ''}</article>`).join('') || '<p class="fushenglu-muted">目前沒有資料</p>'}</section>`;
-    screen.innerHTML = `<section class="fushenglu-section-heading"><div><p>僅影響未來解析</p><h2>世界規則</h2></div></section>${list('AI 建議', groups.suggested)}${list('已確認規則', groups.confirmed)}${list('已拒絕建議', groups.rejected)}`;
+    const list = (title, rows) => `<section class="fushenglu-card"><h2>${title}</h2>${rows.map((rule) => `<article class="fushenglu-rule" data-rule-key="${escapeHtml(rule.ruleKey)}"><strong>${escapeHtml(rule.type ?? '世界規則')}</strong><p>${escapeHtml(rule.description ?? rule.label ?? '尚未提供說明')}</p>${rule.evidence?.quote ? `<details><summary>查看證據</summary><p>${escapeHtml(rule.evidence.quote)}</p></details>` : ''}${rule.status === 'suggested' ? '<button type="button" data-action="confirm-world-rule">接受</button><button type="button" data-action="reject-world-rule">拒絕</button>' : ''}${rule.status === 'confirmed' ? '<input class="fushenglu-input" data-rule-description maxlength="500" value="' + escapeHtml(rule.description) + '" /><button type="button" data-action="edit-world-rule">儲存修改</button><button type="button" data-action="delete-world-rule">刪除</button>' : ''}</article>`).join('') || '<p class="fushenglu-muted">目前沒有資料</p>'}</section>`;
+    screen.innerHTML = `<section class="fushenglu-section-heading"><div><p>僅影響未來解析</p><h2>世界規則</h2></div></section><aside class="fushenglu-notice">規則變更只影響後續分析；需要時請重新掃描聊天。</aside>${list('AI 建議', groups.suggested)}${list('已確認規則', groups.confirmed)}${list('已拒絕建議', groups.rejected)}`;
   }
 
   function renderSettings() {
     const screen = elements.screens.get('settings');
-    screen.innerHTML = `<section class="fushenglu-section-heading"><div><p>資料與隱私</p><h2>設定</h2></div></section><section class="fushenglu-card"><button type="button" data-action="open-screen" data-screen="api">API 與模型設定</button><button type="button" data-action="open-screen" data-screen="world">世界規則</button><label class="fushenglu-check"><input type="checkbox" data-reset-world-rules /> 一併清除世界規則</label><button type="button" class="fushenglu-danger-button" data-action="open-reset">重置此聊天的浮生錄資料</button><p class="fushenglu-help">會清除本聊天的批次、事件、待確認、人物、行囊、交接與歷史進度；不會清除 API 設定或原始聊天。</p></section><section class="fushenglu-management-only fushenglu-card"><h2>診斷</h2><details><summary>版本資訊</summary><p>${escapeHtml(APP_VERSION)}</p></details></section>`;
+    screen.innerHTML = `<section class="fushenglu-section-heading"><div><p>資料與隱私</p><h2>設定</h2></div></section><section class="fushenglu-card"><button type="button" data-action="open-screen" data-screen="api">API 與模型設定</button><button type="button" data-action="open-screen" data-screen="world">世界規則</button><p>確認模式：每輪總確認（預設）。安全項目自動提交仍會經正式批次提交與儲存。</p><label class="fushenglu-check"><input type="checkbox" data-reset-world-rules /> 一併清除世界規則</label><button type="button" class="fushenglu-danger-button" data-action="open-reset">重置此聊天的浮生錄資料</button><p class="fushenglu-help">會清除本聊天的批次、事件、待確認、人物、行囊、交接與歷史進度；不會清除 API 設定或原始聊天。</p></section><section class="fushenglu-management-only fushenglu-card"><h2>診斷</h2><details><summary>版本資訊</summary><p>${escapeHtml(APP_VERSION)}</p></details></section>`;
+  }
+
+  function renderRecords() {
+    const screen = elements.screens.get('records');
+    const handled = (state?.pendingItems ?? []).filter((item) => ['accepted', 'rejected', 'edited', 'deferred', 'discarded', 'resolved'].includes(item.status)).slice(0, 20);
+    screen.innerHTML = `<section class="fushenglu-section-heading"><div><p>已處理事項</p><h2>處理紀錄</h2></div></section>${handled.map((item) => `<article class="fushenglu-card"><h2>${escapeHtml(pendingQuestion(item))}</h2><p>結果：${escapeHtml(item.status)} · ${escapeHtml(item.updatedAt || item.resolvedAt || '處理時間未記錄')}</p>${shortEvidence(item) ? `<p class="fushenglu-muted">來源：${escapeHtml(shortEvidence(item))}</p>` : ''}<details class="fushenglu-management-only"><summary>技術資料</summary><p>來源批次：${escapeHtml(item.batchId || '未記錄')}</p></details></article>`).join('') || '<section class="fushenglu-empty"><h2>尚無處理紀錄</h2></section>'}`;
   }
 
   function renderResetDialog() {
@@ -888,7 +835,6 @@ export function mountFushengluApp({
     }
 
     renderHome();
-    renderCharacterOverview();
     renderReview();
     renderPending();
     renderHandoff();
@@ -897,6 +843,7 @@ export function mountFushengluApp({
     renderPeople();
     renderWorld();
     renderSettings();
+    renderRecords();
     renderInventory();
     renderWardrobe();
     renderSkills();
@@ -1498,8 +1445,20 @@ export function mountFushengluApp({
     if (action === 'close-reset') { root.querySelector('[data-reset-dialog]')?.remove(); return; }
     if (action === 'confirm-reset') {
       const preserveWorldRules = !root.querySelector('[data-reset-world-rules]')?.checked;
-      await runMutation(() => store.update((current) => resetCurrentChatData(current, { preserveWorldRules, timestamp: now() })), '已重置此聊天的浮生錄資料');
-      root.querySelector('[data-reset-dialog]')?.remove(); showScreen('home'); return;
+      let succeeded = false;
+      await runMutation(async () => { await store.update((current) => resetCurrentChatData(current, { preserveWorldRules, timestamp: now() })); succeeded = true; }, '已重置此聊天的浮生錄資料');
+      if (succeeded) { root.querySelector('[data-reset-dialog]')?.remove(); showScreen('home'); }
+      return;
+    }
+    if (['confirm-world-rule', 'reject-world-rule', 'edit-world-rule', 'delete-world-rule'].includes(action)) {
+      const card = target.closest('[data-rule-key]'); const key = card?.dataset.ruleKey;
+      await runMutation(() => store.update((current) => {
+        if (action === 'confirm-world-rule') return confirmWorldRule(current, key, now());
+        if (action === 'reject-world-rule') return rejectWorldRule(current, key, now());
+        if (action === 'edit-world-rule') return editWorldRule(current, key, card.querySelector('[data-rule-description]')?.value, now());
+        return deleteWorldRule(current, key, now());
+      }), '世界規則已儲存');
+      return;
     }
     if (action === 'close') {
       setOpen(false);
