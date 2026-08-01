@@ -310,6 +310,7 @@ export class TauriTavernHandoffBridge {
     this.finalizeDelayMs = finalizeDelayMs;
     this.activeGeneration = null;
     this.unsubscribers = [];
+    this.chatSwitchToken = 0;
   }
 
   setPrompt(context, text) {
@@ -321,6 +322,26 @@ export class TauriTavernHandoffBridge {
       false,
       0,
     );
+  }
+
+  syncHostPromptFromChatState(context, chatState) {
+    const injection = buildHandoffInjection(chatState);
+    this.setPrompt(context, injection.text);
+    return injection;
+  }
+
+  syncSavedState(chatState) {
+    this.syncHostPromptFromChatState(requireCapabilities(this.root), chatState);
+  }
+
+  async syncAfterChatChanged() {
+    const token = ++this.chatSwitchToken;
+    const context = requireCapabilities(this.root);
+    this.setPrompt(context, '');
+    const chatId = getChatId(context);
+    const saved = await this.store.read();
+    if (token !== this.chatSwitchToken || saved.chatId !== chatId) return;
+    this.syncHostPromptFromChatState(context, saved.state);
   }
 
   async onGenerationStart(type, _options, dryRun = false) {
@@ -437,6 +458,7 @@ export class TauriTavernHandoffBridge {
   }
 
   start() {
+    if (this.unsubscribers.length > 0) return () => this.stop();
     const capabilities = inspectTavernCapabilities(this.root);
 
     if (!capabilities.ok || !capabilities.handoff.ok) {
@@ -452,6 +474,7 @@ export class TauriTavernHandoffBridge {
     const receivedHandler = (messageId, type) =>
       this.onMessageReceived(messageId, type);
     const stoppedHandler = () => this.onGenerationStopped();
+    const chatChangedHandler = () => { void this.syncAfterChatChanged(); };
 
     context.eventSource.on(generationEvent, generationHandler);
     context.eventSource.on(eventTypes.MESSAGE_RECEIVED, receivedHandler);
@@ -460,6 +483,10 @@ export class TauriTavernHandoffBridge {
     );
     this.unsubscribers.push(() =>
       removeListener(context, eventTypes.MESSAGE_RECEIVED, receivedHandler),
+    );
+    context.eventSource.on(eventTypes.CHAT_CHANGED, chatChangedHandler);
+    this.unsubscribers.push(() =>
+      removeListener(context, eventTypes.CHAT_CHANGED, chatChangedHandler),
     );
 
     if (eventTypes.GENERATION_STOPPED) {

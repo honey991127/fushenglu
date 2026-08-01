@@ -45,7 +45,7 @@ export function startFushenglu() {
   const apiClient = new OpenAICompatibleClient({ settingsStore });
   const handoffBridge = new TauriTavernHandoffBridge({ store });
   const stopHandoff = handoffBridge.start();
-  const mounted = mountFushengluApp({ store, settingsStore, apiClient });
+  const mounted = mountFushengluApp({ store, settingsStore, apiClient, handoffBridge });
   appController = {
     ...mounted,
     destroy() {

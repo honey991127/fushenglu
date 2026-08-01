@@ -11,6 +11,7 @@ import { createEventId } from './event-id.d553cbd953d1.js';
 import {
   inspectProposalPayload,
 } from './proposal-repair.505675c642f9.js';
+import { canonicalHandoffSections } from './snapshot-handoff.a23e1c65a9e3.js';
 
 export const BATCH_STATUSES = Object.freeze([
   'draft',
@@ -1152,6 +1153,25 @@ export function commitBatch(
   );
 }
 
+function canonicalHandoffItems(state, batchId, timestamp) {
+  return canonicalHandoffSections(state.currentSnapshot).map(([section, text]) => ({
+    schemaVersion: 1,
+    handoffId: `handoff:${section}`,
+    batchId,
+    text,
+    mode: 'until_changed',
+    stateType: section,
+    active: true,
+    sourceEventIds: [...state.eventLedger.eventIds],
+    lastInjectedGenerationId: null,
+    consumedAt: null,
+    replacedBy: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    deletedAt: null,
+  }));
+}
+
 export function prepareBatchHandoff(
   state,
   batchId,
@@ -1170,6 +1190,10 @@ export function prepareBatchHandoff(
     throw new Error('只有 committed 批次可以準備交接');
   }
 
+  const handoffItems = canonicalHandoffItems(state, batchId, timestamp);
+  const pending = transitionBatch(batch, 'handoff_pending', timestamp);
+  return stateWithTimestamp(replaceBatch({ ...state, handoffItems }, pending), timestamp);
+  /* legacy proposal/draft compatibility only; not a formal handoff source.
   const eventByProposal = new Map(
     state.events
       .filter((event) => event.batchId === batchId && event.sourceProposalId)
@@ -1246,7 +1270,7 @@ export function prepareBatchHandoff(
   return stateWithTimestamp(
     replaceBatch({ ...state, handoffItems }, pending),
     timestamp,
-  );
+  ); */
 }
 
 export function completeBatch(
@@ -1613,6 +1637,7 @@ export function undoLatestCommittedBatch(
   next.committedBatchIds.push(batchId);
   next.testState.updatedAt = timestamp;
   Object.assign(next, rebuildChatStateSnapshot(next));
+  next.handoffItems = canonicalHandoffItems(next, batchId, timestamp);
   return stateWithTimestamp(next, timestamp);
 }
 

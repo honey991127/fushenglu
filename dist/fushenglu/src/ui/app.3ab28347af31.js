@@ -40,8 +40,8 @@ import {
   updateBatchProposal,
   updateHandoffItem,
   normalizeChatMessages,
-} from '../core/turn-sync.c408ea65b41c.js';
-import { NoActiveChatError } from '../integrations/tauritavern.acef06b84ebb.js';
+} from '../core/turn-sync.a6ad721fbef4.js';
+import { NoActiveChatError } from '../integrations/tauritavern.c23e8e335cb1.js';
 import {
   APP_VERSION,
   MANIFEST_VERSION,
@@ -320,6 +320,7 @@ export function mountFushengluApp({
   store,
   settingsStore,
   apiClient,
+  handoffBridge = null,
   documentRef = document,
 } = {}) {
   if (!store || !settingsStore || !apiClient) {
@@ -1263,6 +1264,9 @@ export function mountFushengluApp({
     if (batch.status === 'handoff_pending') {
       await store.update((current) => completeBatch(current, batchId, now()));
     }
+
+    snapshot = await store.read();
+    handoffBridge?.syncSavedState(snapshot.state);
   }
 
   async function resumeBatch(batchId) {
@@ -1481,7 +1485,7 @@ export function mountFushengluApp({
     if (action === 'confirm-reset') {
       const preserveWorldRules = !root.querySelector('[data-reset-world-rules]')?.checked;
       let succeeded = false;
-      await runMutation(async () => { await store.update((current) => resetCurrentChatData(current, { preserveWorldRules, timestamp: now() })); succeeded = true; }, '已重置此聊天的浮生錄資料');
+      await runMutation(async () => { const saved = await store.update((current) => resetCurrentChatData(current, { preserveWorldRules, timestamp: now() })); handoffBridge?.syncSavedState(saved.state); succeeded = true; }, '已重置此聊天的浮生錄資料');
       if (succeeded) { root.querySelector('[data-reset-dialog]')?.remove(); showScreen('home'); }
       return;
     }
@@ -1830,13 +1834,15 @@ export function mountFushengluApp({
 
     if (action === 'undo-latest') {
       await runMutation(
-        () =>
-          store.update((current) =>
+        async () => {
+          const saved = await store.update((current) =>
             undoLatestCommittedBatch(current, {
               batchId: makeId('batch'),
               timestamp: now(),
             }),
-          ),
+          );
+          handoffBridge?.syncSavedState(saved.state);
+        },
         '最近批次已軟撤銷',
       );
       return;

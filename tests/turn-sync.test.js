@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { createEmptyAnalysisResult } from '../src/core/analysis-schema.js';
 import { createChatState, migrateChatState } from '../src/core/chat-state.js';
+import { canonicalHandoffSections } from '../src/core/snapshot-handoff.js';
 import {
   beginTurnBatch,
   buildHandoffInjection,
@@ -222,45 +223,15 @@ test('next_generation 在成功保存 assistant 回覆後消耗', () => {
 });
 
 test('until_changed 會被相同狀態類型的新交接取代', () => {
-  let state = reviewState();
-  state.handoffItems.push({
-    schemaVersion: 1,
-    handoffId: 'handoff-old',
-    batchId: 'batch-old',
-    text: '舊物品狀態',
-    mode: 'until_changed',
-    stateType: 'inventory',
-    active: true,
-    sourceEventIds: ['event-old'],
-    lastInjectedGenerationId: null,
-    consumedAt: null,
-    replacedBy: null,
-    createdAt: NOW,
-    updatedAt: NOW,
-    deletedAt: null,
-  });
-  state = updateBatchHandoffDraft(
-    state,
-    'batch-1',
-    'handoff_proposal-1',
-    { mode: 'until_changed', active: true },
-    NOW,
-  );
-  const createId = idFactory();
-  state = startBatchCommit(state, 'batch-1', NOW);
-  state = commitBatch(state, 'batch-1', { timestamp: NOW, createId });
-  state = prepareBatchHandoff(state, 'batch-1', { timestamp: LATER, createId });
-
-  const oldItem = state.handoffItems.find(
-    (item) => item.handoffId === 'handoff-old',
-  );
-  const newItem = state.handoffItems.find(
-    (item) => item.batchId === 'batch-1',
-  );
-  assert.equal(oldItem.active, false);
-  assert.equal(oldItem.replacedBy, newItem.handoffId);
-  assert.equal(newItem.active, true);
-  assert.equal(newItem.mode, 'until_changed');
+  const base = { playerEntityId: 'entity:player', currentPlace: '庭院', assets: [{ current: true, ownerEntityId: 'entity:player', canonicalName: '桂花糕', quantity: { exact: 1 }, container: { type: 'carried' } }] };
+  const first = canonicalHandoffSections(base);
+  const second = canonicalHandoffSections({ ...base, currentPlace: '書房' });
+  const oldPlace = first.find(([key]) => key === 'current_place');
+  const newPlace = second.find(([key]) => key === 'current_place');
+  assert.equal(oldPlace[0], newPlace[0]);
+  assert.match(newPlace[1], /書房/);
+  assert.doesNotMatch(newPlace[1], /庭院/);
+  assert.deepEqual(first.find(([key]) => key === 'player_carried_assets'), second.find(([key]) => key === 'player_carried_assets'));
 });
 
 test('待確認的拒絕只記錄決定，不修改正式測試狀態', () => {

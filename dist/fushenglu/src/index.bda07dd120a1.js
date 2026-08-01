@@ -5,8 +5,8 @@ import {
 import {
   TauriTavernChatStateStore,
   TauriTavernHandoffBridge,
-} from './integrations/tauritavern.acef06b84ebb.js';
-import { mountFushengluApp } from './ui/app.a43757ba5dfe.js';
+} from './integrations/tauritavern.c23e8e335cb1.js';
+import { mountFushengluApp } from './ui/app.3ab28347af31.js';
 
 let appController = null;
 let waitingForDocument = false;
@@ -45,7 +45,7 @@ export function startFushenglu() {
   const apiClient = new OpenAICompatibleClient({ settingsStore });
   const handoffBridge = new TauriTavernHandoffBridge({ store });
   const stopHandoff = handoffBridge.start();
-  const mounted = mountFushengluApp({ store, settingsStore, apiClient });
+  const mounted = mountFushengluApp({ store, settingsStore, apiClient, handoffBridge });
   appController = {
     ...mounted,
     destroy() {
