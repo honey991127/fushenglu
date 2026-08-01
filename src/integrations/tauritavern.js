@@ -7,6 +7,7 @@ import {
   buildIdentityContext,
   buildHandoffInjection,
   consumeNextGeneration,
+  normalizeChatMessages,
   recordHandoffInjection,
 } from '../core/turn-sync.js';
 
@@ -287,6 +288,93 @@ export class TauriTavernChatStateStore {
     context.eventSource.on(eventName, handler);
 
     return () => removeListener(context, eventName, handler);
+  }
+}
+
+// This bridge deliberately has no awaited work in its event handler.  Some
+// TauriTavern event buses await listener return values before continuing the
+// host generation, so live analysis must always be queued in the background.
+export class TauriTavernLiveTurnBridge {
+  constructor({ root = globalThis, queueLiveTurnAnalysis, reportFailure = null } = {}) {
+    if (typeof queueLiveTurnAnalysis !== 'function') {
+      throw new TypeError('TauriTavernLiveTurnBridge requires queueLiveTurnAnalysis');
+    }
+
+    this.root = root;
+    this.queueLiveTurnAnalysis = queueLiveTurnAnalysis;
+    this.reportFailure = reportFailure ?? (() => {
+      this.root.console?.warn?.('浮生錄本輪分析背景工作失敗；主聊天未受影響。');
+    });
+    this.unsubscribers = [];
+    this.queuedMessageKeys = new Set();
+  }
+
+  start() {
+    if (this.unsubscribers.length > 0) return () => this.stop();
+    const capabilities = inspectTavernCapabilities(this.root);
+
+    if (!capabilities.ok) return () => {};
+
+    const context = capabilities.context;
+    const eventTypes = getEventTypes(context);
+
+    if (!eventTypes?.MESSAGE_RECEIVED) return () => {};
+
+    const receivedHandler = (messageId, type) => {
+      // Do not return the Promise: the host may await event listeners.
+      this.onMessageReceived(messageId, type);
+    };
+    const chatChangedHandler = () => {
+      // State-level de-duplication remains authoritative; this only bounds
+      // the in-memory fast path to the active chat.
+      this.queuedMessageKeys.clear();
+    };
+
+    context.eventSource.on(eventTypes.MESSAGE_RECEIVED, receivedHandler);
+    context.eventSource.on(eventTypes.CHAT_CHANGED, chatChangedHandler);
+    this.unsubscribers.push(() => removeListener(context, eventTypes.MESSAGE_RECEIVED, receivedHandler));
+    this.unsubscribers.push(() => removeListener(context, eventTypes.CHAT_CHANGED, chatChangedHandler));
+    return () => this.stop();
+  }
+
+  onMessageReceived(messageId, type) {
+    if (!['normal', 'continue'].includes(type)) return;
+
+    let context;
+    try {
+      context = requireCapabilities(this.root);
+    } catch {
+      return;
+    }
+
+    const index = Number(messageId);
+    const rawMessage = context.chat?.[index];
+    if (!Number.isInteger(index) || !rawMessage || rawMessage.is_user || rawMessage.is_system) return;
+
+    const normalized = normalizeChatMessages(context.chat);
+    const message = normalized.messages.find((item) => item.index === index);
+    if (!message || message.role !== 'assistant') return;
+
+    const chatId = getChatId(context);
+    const messageKey = `${chatId}:${message.messageRef}`;
+    if (this.queuedMessageKeys.has(messageKey)) return;
+    this.queuedMessageKeys.add(messageKey);
+
+    void this.queueLiveTurnAnalysis({
+      chatId,
+      message: clone(rawMessage),
+      messageIndex: index,
+      messageRef: message.messageRef,
+      slotKey: message.slotKey,
+      fingerprint: message.fingerprint,
+      swipeId: message.swipeId,
+      type,
+    }).catch(() => this.reportFailure());
+  }
+
+  stop() {
+    for (const unsubscribe of this.unsubscribers.splice(0)) unsubscribe();
+    this.queuedMessageKeys.clear();
   }
 }
 

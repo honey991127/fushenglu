@@ -1,4 +1,4 @@
-import { maskApiKey } from '../core/api-client.js';
+import { maskApiKey, redactSensitive } from '../core/api-client.js';
 import {
   createEmptyAnalysisResult,
   mergeAnalysisResults,
@@ -40,6 +40,7 @@ import {
   updateBatchProposal,
   updateHandoffItem,
   normalizeChatMessages,
+  sanitizeAnalysisContent,
 } from '../core/turn-sync.js';
 import { NoActiveChatError } from '../integrations/tauritavern.js';
 import {
@@ -123,6 +124,19 @@ function makeId(prefix) {
 
 function now() {
   return new Date().toISOString();
+}
+
+function safeAnalysisFailureMessage(error, settingsStore) {
+  const message = error instanceof Error ? error.message : String(error);
+  let apiKey = '';
+  try {
+    apiKey = settingsStore.load()?.apiKey ?? '';
+  } catch {
+    // A settings read failure must not mask the original analysis failure.
+  }
+  return redactSensitive(message, [apiKey])
+    .replace(/\b(?:bearer|api[_ -]?key)\s+[^\s,;]+/gi, '[REDACTED]')
+    .slice(0, 300);
 }
 
 function createMarkup(documentRef) {
@@ -821,7 +835,17 @@ export function mountFushengluApp({
     const screen = elements.screens.get('records');
     const allHandled = (state?.pendingItems ?? []).filter((item) => ['accepted', 'rejected', 'edited', 'deferred', 'discarded', 'resolved'].includes(item.status));
     const handled = allHandled.slice(0, recordLimit);
-    screen.innerHTML = `<section class="fushenglu-section-heading"><div><p>已處理事項</p><h2>處理紀錄</h2></div></section>${handled.map((item) => `<article class="fushenglu-card"><h2>${escapeHtml(pendingQuestion(item))}</h2><p>結果：${escapeHtml(item.status)} · ${escapeHtml(item.updatedAt || item.resolvedAt || '處理時間未記錄')}</p>${shortEvidence(item) ? `<p class="fushenglu-muted">來源：${escapeHtml(shortEvidence(item))}</p>` : ''}<details class="fushenglu-management-only"><summary>技術資料</summary><p>來源批次：${escapeHtml(item.batchId || '未記錄')}</p></details></article>`).join('') || '<section class="fushenglu-empty"><h2>尚無處理紀錄</h2></section>'}${allHandled.length > handled.length ? '<button type="button" data-action="show-more-records">顯示更多</button>' : ''}`;
+    const liveBatches = [...(state?.batches ?? [])].filter((batch) => batch.source === 'turn').reverse().slice(0, recordLimit);
+    const liveCards = liveBatches.map((batch) => {
+      const assistant = [...(batch.inputMessages ?? [])].reverse().find((message) => message.role === 'assistant');
+      const candidateCount = (batch.detectedChanges?.length ?? 0) + (batch.uncertainItems?.length ?? 0);
+      const failure = batch.status === 'failed' && batch.failureMessage
+        ? `<p class="fushenglu-muted">分析失敗：${escapeHtml(batch.failureMessage)}</p>`
+        : '';
+      return `<article class="fushenglu-card" data-live-batch="${escapeHtml(batch.batchId)}" data-live-batch-status="${escapeHtml(batch.status)}"><h2>本輪分析・${escapeHtml(statusLabel(batch.status))}</h2><p>建立時間：${escapeHtml(batch.createdAt)}</p><p>候選：${candidateCount}</p>${assistant ? `<p class="fushenglu-muted">來源訊息：${escapeHtml(sanitizeAnalysisContent(assistant.content).slice(0, 160) || '（沒有可分析的可見正文）')}</p>` : ''}${failure}</article>`;
+    }).join('');
+    const handledCards = handled.map((item) => `<article class="fushenglu-card"><h2>${escapeHtml(pendingQuestion(item))}</h2><p>結果：${escapeHtml(item.status)} · ${escapeHtml(item.updatedAt || item.resolvedAt || '處理時間未記錄')}</p>${shortEvidence(item) ? `<p class="fushenglu-muted">來源：${escapeHtml(shortEvidence(item))}</p>` : ''}<details class="fushenglu-management-only"><summary>技術資料</summary><p>來源批次：${escapeHtml(item.batchId || '未記錄')}</p></details></article>`).join('');
+    screen.innerHTML = `<section class="fushenglu-section-heading"><div><p>處理過程</p><h2>處理紀錄</h2></div></section>${liveCards}${handledCards || (!liveCards ? '<section class="fushenglu-empty"><h2>尚無處理紀錄</h2></section>' : '')}${allHandled.length > handled.length ? '<button type="button" data-action="show-more-records">顯示更多</button>' : ''}`;
   }
 
   function renderResetDialog() {
@@ -1046,18 +1070,23 @@ export function mountFushengluApp({
     }
 
     try {
+      const analysisMessages = batch.inputMessages
+        .map(({ messageRef, role, content, speakerName, index }) => ({
+          messageRef,
+          role,
+          content: sanitizeAnalysisContent(content),
+          speakerName,
+          index,
+        }))
+        .filter((message) => message.content);
       const analysis = correction
         ? await apiClient.parseCorrection(batch.correctionText, { batchId })
         : batch.source === 'history_import'
           ? await analyzeHistoryImportBatch(batch)
-          : await apiClient.analyzeMessages(
-              batch.inputMessages.map(({ messageRef, role, content, speakerName, index }) => ({
-                messageRef,
-                role,
-                content,
-                speakerName,
-                index,
-              })),
+          : analysisMessages.length === 0
+            ? createEmptyAnalysisResult()
+            : await apiClient.analyzeMessages(
+              analysisMessages,
               { batchId, identityContext: batch.identityContext },
             );
       await store.update((current) =>
@@ -1065,10 +1094,11 @@ export function mountFushengluApp({
       );
       await autoCommitSafeBatch(batchId);
     } catch (error) {
+      const safeError = new Error(safeAnalysisFailureMessage(error, settingsStore));
       await store.update((current) =>
-        failBatch(current, batchId, 'analysis', error, now()),
+        failBatch(current, batchId, 'analysis', safeError, now()),
       );
-      throw error;
+      throw safeError;
     }
   }
 
@@ -1097,6 +1127,55 @@ export function mountFushengluApp({
     );
     currentScreen = 'review';
     await analyzeBatch(batchId);
+  }
+
+  // Called only by the host event bridge. It begins with a persisted
+  // analysis_pending batch so the UI has a visible retryable record even when
+  // the independent analysis API later fails.
+  async function queueLiveTurnAnalysis(liveTurn) {
+    if (!liveTurn || !['normal', 'continue'].includes(liveTurn.type)) return null;
+    const batchId = makeId('batch');
+    let created = false;
+
+    try {
+      const saved = await store.update((current, context) => {
+        if (context.chatId !== liveTurn.chatId) return current;
+        const alreadyQueued = current.batches.some((batch) =>
+          (batch.sourceMessageRefs ?? []).includes(liveTurn.messageRef),
+        );
+        if (alreadyQueued) return current;
+        created = true;
+        return beginTurnBatch(current, [liveTurn.message], {
+          batchId,
+          timestamp: now(),
+          source: 'turn',
+          forceAllMessages: true,
+          identityContext: context.identityContext,
+        }).state;
+      });
+      if (!created || !getBatch(saved.state, batchId)) return null;
+
+      state = saved.state;
+      chatId = saved.chatId;
+      currentScreen = 'review';
+      renderAll();
+      setStatus('分析中', 'neutral');
+      await analyzeBatch(batchId);
+      await refresh('本輪分析完成');
+      return batchId;
+    } catch (error) {
+      if (created) {
+        try {
+          await refresh('本輪分析失敗');
+        } catch {
+          // The failed batch remains the durable diagnostic whenever saving
+          // succeeded; no background failure may affect the host chat.
+        }
+      }
+      const message = safeAnalysisFailureMessage(error, settingsStore);
+      setStatus(`本輪分析失敗：${message}`, 'error');
+      return null;
+    }
   }
 
   async function scanExistingChat() {
@@ -1971,6 +2050,7 @@ export function mountFushengluApp({
 
   return {
     root,
+    queueLiveTurnAnalysis,
     destroy() {
       unsubscribe();
       documentRef.removeEventListener('keydown', handleKeydown);

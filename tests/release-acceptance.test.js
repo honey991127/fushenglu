@@ -62,4 +62,6 @@ test('Phase 8 release artifacts agree on 0.5.0 and dist is browser-only', async 
   assert.equal(distManifest.version, '0.5.0');
   assert.match(distManifest.js, /^src\/index\.[a-f0-9]+\.js$/);
   assert.doesNotMatch(distManifest.js, /v042|happy-dom|node_modules/);
+  const runtime = await readFile(new URL('../dist/fushenglu/' + distManifest.js, import.meta.url), 'utf8');
+  assert.doesNotMatch(runtime, /__FUSHENGLU_VERSION__|happy-dom|node_modules/);
 });

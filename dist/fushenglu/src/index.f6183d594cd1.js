@@ -5,8 +5,9 @@ import {
 import {
   TauriTavernChatStateStore,
   TauriTavernHandoffBridge,
-} from './integrations/tauritavern.a39fe2be07c8.js';
-import { mountFushengluApp } from './ui/app.0e3b5dc137fa.js';
+  TauriTavernLiveTurnBridge,
+} from './integrations/tauritavern.7f207f9ed485.js';
+import { mountFushengluApp } from './ui/app.e2bfdc38f58f.js';
 
 let appController = null;
 let waitingForDocument = false;
@@ -46,9 +47,14 @@ export function startFushenglu() {
   const handoffBridge = new TauriTavernHandoffBridge({ store });
   const stopHandoff = handoffBridge.start();
   const mounted = mountFushengluApp({ store, settingsStore, apiClient, handoffBridge });
+  const liveTurnBridge = new TauriTavernLiveTurnBridge({
+    queueLiveTurnAnalysis: mounted.queueLiveTurnAnalysis,
+  });
+  const stopLiveTurn = liveTurnBridge.start();
   appController = {
     ...mounted,
     destroy() {
+      stopLiveTurn();
       stopHandoff();
       mounted.destroy();
       appController = null;

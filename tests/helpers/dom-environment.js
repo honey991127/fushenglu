@@ -9,6 +9,6 @@ export function createDomApp(stateByChat, { failSave = false } = {}) {
   context.chatMetadata[CHAT_METADATA_KEY] = stateByChat.get(chatId);
   const host = { SillyTavern: { getContext: () => context } };
   const store = new TauriTavernChatStateStore({ root: host, now: () => '2026-08-01T00:00:00.000Z' });
-  return { window, document: window.document, store, settingsStore: new BrowserApiSettingsStore(), context, get saves() { return saves; }, set failSave(value) { shouldFailSave = value; }, switchChat(next) { chatId = next; context.chatMetadata[CHAT_METADATA_KEY] = stateByChat.get(next); for (const fn of listeners.get('chat_changed') ?? []) fn(); }, destroy() { window.happyDOM.cancelAsync(); window.close(); } };
+  return { window, document: window.document, store, settingsStore: new BrowserApiSettingsStore(), context, host, listeners, get saves() { return saves; }, set failSave(value) { shouldFailSave = value; }, switchChat(next) { chatId = next; context.chatMetadata[CHAT_METADATA_KEY] = stateByChat.get(next); for (const fn of listeners.get('chat_changed') ?? []) fn(); }, destroy() { window.happyDOM.cancelAsync(); window.close(); } };
 }
 

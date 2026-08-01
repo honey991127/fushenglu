@@ -144,6 +144,16 @@ function normalizeContent(message) {
   return '';
 }
 
+// Keep host-visible chat text as the source record, but never submit hidden
+// reasoning or transport controls to the independent analysis model.
+export function sanitizeAnalysisContent(value) {
+  return String(value ?? '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<(?:thinking|analysis|reflection)\b[^>]*>[\s\S]*?<\/(?:thinking|analysis|reflection)\s*>/gi, '')
+    .replace(/^\s*(?:statements?\s+refused|internal\s+instructions?|control\s+message)\s*:?.*$/gim, '')
+    .trim();
+}
+
 function normalizeSpeakerName(message) {
   const name = message?.name ?? message?.speaker ?? message?.speaker_name ?? message?.extra?.speaker;
   return typeof name === 'string' && name.trim() ? name.trim() : null;
