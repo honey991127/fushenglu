@@ -41,7 +41,7 @@ import {
   updateHandoffItem,
   normalizeChatMessages,
 } from '../core/turn-sync.3277b52db040.js';
-import { NoActiveChatError } from '../integrations/tauritavern.df6834556639.js';
+import { NoActiveChatError } from '../integrations/tauritavern.a39fe2be07c8.js';
 import {
   APP_VERSION,
   MANIFEST_VERSION,
