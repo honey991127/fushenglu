@@ -46,20 +46,12 @@ import {
   APP_VERSION,
   MANIFEST_VERSION,
   RUNTIME_VERSION,
-} from '../version.ed85c241c92f.js';
+} from '../version.99a308dc6b61.js';
 
 const APP_ROOT_ID = 'fushenglu-extension-root';
 
 function escapeHtml(value) {
   return escapePresentationHtml(value);
-}
-
-function safeJson(value) {
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
 }
 
 function formatActionValue(action) {
@@ -108,7 +100,7 @@ function formatActionValue(action) {
     return `修煉：${operation} ${value.stage || value.name || '未命名階段'}`;
   }
 
-  return safeJson(value);
+  return '已記錄的變更';
 }
 
 function parseEditedValue(value) {
@@ -258,7 +250,7 @@ function renderProposal(item, batch) {
       </label>
       <label class="fushenglu-label">
         內容
-        <textarea class="fushenglu-textarea" data-proposal-value>${escapeHtml(safeJson(item.value))}</textarea>
+        <p class="fushenglu-help">${escapeHtml(formatReviewItem(item))}</p>
       </label>
       <button
         type="button"
@@ -292,10 +284,7 @@ function renderHandoffDraft(draft, batch) {
         />
         <span>提供給主聊天</span>
       </label>
-      <textarea
-        class="fushenglu-textarea"
-        data-handoff-draft-text
-      >${escapeHtml(draft.text)}</textarea>
+      <p class="fushenglu-help">${escapeHtml(draft.text)}</p>
       <select
         data-action="handoff-draft-mode"
         data-batch-id="${escapeHtml(batch.batchId)}"
@@ -648,7 +637,7 @@ export function mountFushengluApp({
                   <input type="checkbox" data-handoff-active ${item.active ? 'checked' : ''} />
                   <span>${item.active ? '正在提供' : '已停用'}</span>
                 </label>
-                <textarea class="fushenglu-textarea" data-handoff-text>${escapeHtml(item.text)}</textarea>
+                <p class="fushenglu-help">${escapeHtml(item.text)}</p>
                 <select data-handoff-mode>
                   <option value="until_changed" ${item.mode === 'until_changed' ? 'selected' : ''}>直到改變</option>
                   <option value="next_generation" ${item.mode === 'next_generation' ? 'selected' : ''}>只提供下一輪</option>
