@@ -5,6 +5,7 @@ import {
   splitAnalysisMessages,
 } from '../core/analysis-schema.js';
 import { createCharacterAction } from '../core/character-state.js';
+import { resetCurrentChatData } from '../core/chat-state.js';
 import {
   buildRollingContext,
   canResumeHistoryImport,
@@ -179,7 +180,7 @@ function createMarkup(documentRef) {
         <section class="fushenglu-screen" data-screen="pending" hidden></section>
         <section class="fushenglu-screen" data-screen="handoff" hidden></section>
         <section class="fushenglu-screen" data-screen="history" hidden></section>
-        <section class="fushenglu-screen" data-screen="api" hidden></section>
+        <section class="fushenglu-screen" data-screen="api" hidden></section><section class="fushenglu-screen" data-screen="people" hidden></section><section class="fushenglu-screen" data-screen="world" hidden></section><section class="fushenglu-screen" data-screen="settings" hidden></section>
         <section class="fushenglu-screen" data-screen="inventory" hidden></section>
         <section class="fushenglu-screen" data-screen="wardrobe" hidden></section>
         <section class="fushenglu-screen" data-screen="skills" hidden></section>
@@ -191,7 +192,7 @@ function createMarkup(documentRef) {
         <button type="button" data-nav="pending">待確認</button>
         <button type="button" data-nav="handoff">交接</button>
         <button type="button" data-nav="history">歷史</button>
-        <button type="button" data-nav="api">API</button>
+        <button type="button" data-nav="people">人物</button><button type="button" data-nav="world">世界規則</button><button type="button" data-nav="settings">設定</button>
       </nav>
     </section>
   `;
@@ -856,6 +857,31 @@ export function mountFushengluApp({
     `;
   }
 
+  function renderPeople() {
+    const screen = elements.screens.get('people');
+    const entities = Object.values(state?.currentSnapshot?.entities ?? {});
+    screen.innerHTML = `<section class="fushenglu-section-heading"><div><p>目前人物</p><h2>人物</h2></div></section>${entities.map((person) => `<article class="fushenglu-card"><h2>${escapeHtml(person.canonicalName ?? (person.entityId === 'entity:player' ? '玩家' : '未命名人物'))}${person.entityId === 'entity:player' ? ' · 玩家' : ''}</h2>${person.aliases?.length ? `<p>別名：${escapeHtml(person.aliases.join('、'))}</p>` : ''}${person.currentLocation ? `<p>目前所在地：${escapeHtml(person.currentLocation)}</p>` : ''}${person.durableStatuses?.length ? `<p>目前狀態：${escapeHtml(person.durableStatuses.map((item) => item.label).join('、'))}</p>` : ''}${Object.values(person.transientStates ?? {}).length ? `<p>最新狀態：${escapeHtml(Object.values(person.transientStates).map((item) => item.label).join('、'))}</p>` : ''}</article>`).join('') || '<section class="fushenglu-empty"><h2>尚未確認人物資料</h2></section>'}`;
+  }
+
+  function renderWorld() {
+    const screen = elements.screens.get('world');
+    const entries = state?.worldRules?.entries ?? [];
+    const groups = { suggested: [], confirmed: [], rejected: [] };
+    for (const entry of entries) groups[entry.status]?.push(entry);
+    const list = (title, rows) => `<section class="fushenglu-card"><h2>${title}</h2>${rows.map((rule) => `<article class="fushenglu-rule"><strong>${escapeHtml(rule.type ?? '世界規則')}</strong><p>${escapeHtml(rule.description ?? rule.label ?? '尚未提供說明')}</p>${rule.evidence?.quote ? `<details><summary>查看證據</summary><p>${escapeHtml(rule.evidence.quote)}</p></details>` : ''}</article>`).join('') || '<p class="fushenglu-muted">目前沒有資料</p>'}</section>`;
+    screen.innerHTML = `<section class="fushenglu-section-heading"><div><p>僅影響未來解析</p><h2>世界規則</h2></div></section>${list('AI 建議', groups.suggested)}${list('已確認規則', groups.confirmed)}${list('已拒絕建議', groups.rejected)}`;
+  }
+
+  function renderSettings() {
+    const screen = elements.screens.get('settings');
+    screen.innerHTML = `<section class="fushenglu-section-heading"><div><p>資料與隱私</p><h2>設定</h2></div></section><section class="fushenglu-card"><button type="button" data-action="open-screen" data-screen="api">API 與模型設定</button><button type="button" data-action="open-screen" data-screen="world">世界規則</button><label class="fushenglu-check"><input type="checkbox" data-reset-world-rules /> 一併清除世界規則</label><button type="button" class="fushenglu-danger-button" data-action="open-reset">重置此聊天的浮生錄資料</button><p class="fushenglu-help">會清除本聊天的批次、事件、待確認、人物、行囊、交接與歷史進度；不會清除 API 設定或原始聊天。</p></section><section class="fushenglu-management-only fushenglu-card"><h2>診斷</h2><details><summary>版本資訊</summary><p>${escapeHtml(APP_VERSION)}</p></details></section>`;
+  }
+
+  function renderResetDialog() {
+    const existing = root.querySelector('[data-reset-dialog]'); if (existing) existing.remove();
+    const dialog = documentRef.createElement('section'); dialog.className = 'fushenglu-reset-dialog'; dialog.dataset.resetDialog = 'true'; dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true');
+    dialog.innerHTML = `<div class="fushenglu-card"><h2>確認重置此聊天</h2><p>此操作只影響目前聊天，且不會清除 API 設定或原始聊天訊息。</p><button type="button" data-action="confirm-reset">確認重置此聊天</button><button type="button" data-action="close-reset">返回</button></div>`; root.append(dialog);
+  }
   function renderAll() {
     if (!state) {
       return;
@@ -868,6 +894,9 @@ export function mountFushengluApp({
     renderHandoff();
     renderHistory();
     renderApi();
+    renderPeople();
+    renderWorld();
+    renderSettings();
     renderInventory();
     renderWardrobe();
     renderSkills();
@@ -1465,6 +1494,13 @@ export function mountFushengluApp({
   }
 
   async function handleAction(action, target) {
+    if (action === 'open-reset') { renderResetDialog(); return; }
+    if (action === 'close-reset') { root.querySelector('[data-reset-dialog]')?.remove(); return; }
+    if (action === 'confirm-reset') {
+      const preserveWorldRules = !root.querySelector('[data-reset-world-rules]')?.checked;
+      await runMutation(() => store.update((current) => resetCurrentChatData(current, { preserveWorldRules, timestamp: now() })), '已重置此聊天的浮生錄資料');
+      root.querySelector('[data-reset-dialog]')?.remove(); showScreen('home'); return;
+    }
     if (action === 'close') {
       setOpen(false);
       return;
