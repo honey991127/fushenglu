@@ -1,4 +1,4 @@
-import { maskApiKey } from '../core/api-client.f774330f64da.js';
+import { maskApiKey } from '../core/api-client.07c611401269.js';
 import {
   createEmptyAnalysisResult,
   mergeAnalysisResults,
@@ -359,6 +359,9 @@ export function mountFushengluApp({
   let liveMessageCapability = null;
   let lastFocusedElement = null;
   let unsubscribe = () => {};
+  let pendingLimit = 20;
+  let recordLimit = 20;
+  const autoCommittingBatchIds = new Set();
 
   function setStatus(message, kind = 'neutral') {
     elements.status.textContent = message;
@@ -378,6 +381,10 @@ export function mountFushengluApp({
   }
 
   function showScreen(name) {
+    if (name !== currentScreen && (name === 'pending' || name === 'records')) {
+      if (name === 'pending') pendingLimit = 20;
+      if (name === 'records') recordLimit = 20;
+    }
     currentScreen = elements.screens.has(name) ? name : 'home';
 
     for (const [screenName, screen] of elements.screens) {
@@ -594,11 +601,12 @@ export function mountFushengluApp({
 
   function renderPending() {
     const screen = elements.screens.get('pending');
-    const items = (state?.pendingItems ?? []).filter((item) => item.status === 'pending').slice(0, 20);
+    const allItems = (state?.pendingItems ?? []).filter((item) => item.status === 'pending');
+    const items = allItems.slice(0, pendingLimit);
     screen.innerHTML = `
       <section class="fushenglu-section-heading">
         <div><p>保留歷史</p><h2>待確認</h2></div>
-        <span class="fushenglu-badge">${items.filter((item) => item.status === 'pending').length}</span>
+        <span class="fushenglu-badge">${allItems.length}</span>
       </section>
       ${
         items
@@ -619,7 +627,7 @@ export function mountFushengluApp({
             `,
           )
           .join('') || '<section class="fushenglu-empty"><h2>目前沒有待確認項目</h2></section>'
-      }
+      }${allItems.length > items.length ? '<button type="button" data-action="show-more-pending">顯示更多</button>' : ''}
     `;
   }
 
@@ -815,13 +823,15 @@ export function mountFushengluApp({
 
   function renderSettings() {
     const screen = elements.screens.get('settings');
-    screen.innerHTML = `<section class="fushenglu-section-heading"><div><p>資料與隱私</p><h2>設定</h2></div></section><section class="fushenglu-card"><button type="button" data-action="open-screen" data-screen="api">API 與模型設定</button><button type="button" data-action="open-screen" data-screen="world">世界規則</button><p>確認模式：每輪總確認（預設）。安全項目自動提交仍會經正式批次提交與儲存。</p><label class="fushenglu-check"><input type="checkbox" data-reset-world-rules /> 一併清除世界規則</label><button type="button" class="fushenglu-danger-button" data-action="open-reset">重置此聊天的浮生錄資料</button><p class="fushenglu-help">會清除本聊天的批次、事件、待確認、人物、行囊、交接與歷史進度；不會清除 API 設定或原始聊天。</p></section><section class="fushenglu-management-only fushenglu-card"><h2>診斷</h2><details><summary>版本資訊</summary><p>${escapeHtml(APP_VERSION)}</p></details></section>`;
+    const mode = savedApiSettingsOrFallback().confirmationMode ?? 'review_once';
+    screen.innerHTML = `<section class="fushenglu-section-heading"><div><p>資料與隱私</p><h2>設定</h2></div></section><section class="fushenglu-card"><button type="button" data-action="open-screen" data-screen="api">API 與模型設定</button><button type="button" data-action="open-screen" data-screen="world">世界規則</button><label class="fushenglu-label">確認模式<select data-confirmation-mode><option value="review_once" ${mode === 'review_once' ? 'selected' : ''}>每輪總確認</option><option value="auto_commit_safe" ${mode === 'auto_commit_safe' ? 'selected' : ''}>安全項目自動提交</option></select></label><button type="button" data-action="save-confirmation-mode">儲存確認模式</button><label class="fushenglu-check"><input type="checkbox" data-reset-world-rules /> 一併清除世界規則</label><button type="button" class="fushenglu-danger-button" data-action="open-reset">重置此聊天的浮生錄資料</button><p class="fushenglu-help">會清除本聊天的批次、事件、待確認、人物、行囊、交接與歷史進度；不會清除 API 設定或原始聊天。</p></section><section class="fushenglu-management-only fushenglu-card"><h2>診斷</h2><details><summary>版本資訊</summary><p>${escapeHtml(APP_VERSION)}</p></details></section>`;
   }
 
   function renderRecords() {
     const screen = elements.screens.get('records');
-    const handled = (state?.pendingItems ?? []).filter((item) => ['accepted', 'rejected', 'edited', 'deferred', 'discarded', 'resolved'].includes(item.status)).slice(0, 20);
-    screen.innerHTML = `<section class="fushenglu-section-heading"><div><p>已處理事項</p><h2>處理紀錄</h2></div></section>${handled.map((item) => `<article class="fushenglu-card"><h2>${escapeHtml(pendingQuestion(item))}</h2><p>結果：${escapeHtml(item.status)} · ${escapeHtml(item.updatedAt || item.resolvedAt || '處理時間未記錄')}</p>${shortEvidence(item) ? `<p class="fushenglu-muted">來源：${escapeHtml(shortEvidence(item))}</p>` : ''}<details class="fushenglu-management-only"><summary>技術資料</summary><p>來源批次：${escapeHtml(item.batchId || '未記錄')}</p></details></article>`).join('') || '<section class="fushenglu-empty"><h2>尚無處理紀錄</h2></section>'}`;
+    const allHandled = (state?.pendingItems ?? []).filter((item) => ['accepted', 'rejected', 'edited', 'deferred', 'discarded', 'resolved'].includes(item.status));
+    const handled = allHandled.slice(0, recordLimit);
+    screen.innerHTML = `<section class="fushenglu-section-heading"><div><p>已處理事項</p><h2>處理紀錄</h2></div></section>${handled.map((item) => `<article class="fushenglu-card"><h2>${escapeHtml(pendingQuestion(item))}</h2><p>結果：${escapeHtml(item.status)} · ${escapeHtml(item.updatedAt || item.resolvedAt || '處理時間未記錄')}</p>${shortEvidence(item) ? `<p class="fushenglu-muted">來源：${escapeHtml(shortEvidence(item))}</p>` : ''}<details class="fushenglu-management-only"><summary>技術資料</summary><p>來源批次：${escapeHtml(item.batchId || '未記錄')}</p></details></article>`).join('') || '<section class="fushenglu-empty"><h2>尚無處理紀錄</h2></section>'}${allHandled.length > handled.length ? '<button type="button" data-action="show-more-records">顯示更多</button>' : ''}`;
   }
 
   function renderResetDialog() {
@@ -1063,11 +1073,26 @@ export function mountFushengluApp({
       await store.update((current) =>
         completeBatchAnalysis(current, batchId, analysis, now()),
       );
+      await autoCommitSafeBatch(batchId);
     } catch (error) {
       await store.update((current) =>
         failBatch(current, batchId, 'analysis', error, now()),
       );
       throw error;
+    }
+  }
+
+  async function autoCommitSafeBatch(batchId) {
+    const settings = savedApiSettingsOrFallback();
+    if (settings.confirmationMode !== 'auto_commit_safe' || autoCommittingBatchIds.has(batchId)) return;
+    const saved = await store.read();
+    const batch = getBatch(saved.state, batchId);
+    if (!batch || batch.status !== 'review_ready' || reviewSummary(batch).total === 0) return;
+    autoCommittingBatchIds.add(batchId);
+    try {
+      await finishCommit(batchId);
+    } finally {
+      autoCommittingBatchIds.delete(batchId);
     }
   }
 
@@ -1441,6 +1466,16 @@ export function mountFushengluApp({
   }
 
   async function handleAction(action, target) {
+    if (action === 'show-more-pending') { pendingLimit += 20; renderPending(); return; }
+    if (action === 'show-more-records') { recordLimit += 20; renderRecords(); return; }
+    if (action === 'save-confirmation-mode') {
+      const mode = root.querySelector('[data-confirmation-mode]')?.value;
+      if (!['review_once', 'auto_commit_safe'].includes(mode)) { setStatus('請選擇有效的確認模式。', 'error'); return; }
+      if (busy) return;
+      setBusy(true); setStatus('正在儲存確認模式…');
+      try { settingsStore.save({ ...savedApiSettingsOrFallback(), confirmationMode: mode }); const saved = settingsStore.load(); if (saved.confirmationMode !== mode) throw new Error('確認模式未能保存'); renderSettings(); showScreen('settings'); setStatus('確認模式已儲存', 'success'); } catch (error) { renderSettings(); showScreen('settings'); setStatus(error instanceof Error ? error.message : String(error), 'error'); } finally { setBusy(false); }
+      return;
+    }
     if (action === 'open-reset') { renderResetDialog(); return; }
     if (action === 'close-reset') { root.querySelector('[data-reset-dialog]')?.remove(); return; }
     if (action === 'confirm-reset') {
@@ -1715,7 +1750,7 @@ export function mountFushengluApp({
     if (action === 'confirm-batch') {
       await runMutation(
         () => finishCommit(target.dataset.batchId),
-        '批次已提交並完成交接準備',
+        '已更新浮生錄',
       );
       return;
     }
@@ -1929,6 +1964,8 @@ export function mountFushengluApp({
       chatId = null;
       liveMessageCapability = null;
       currentScreen = 'home';
+      pendingLimit = 20;
+      recordLimit = 20;
       void refresh('聊天已切換');
     });
   } catch {

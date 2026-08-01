@@ -31,6 +31,7 @@ export const DEFAULT_API_SETTINGS = Object.freeze({
   validationModel: '',
   temperature: 0.2,
   maxOutputTokens: 2048,
+  confirmationMode: 'review_once',
 });
 
 export class ApiSettingsError extends Error {
@@ -90,6 +91,10 @@ export function normalizeApiSettings(raw = {}) {
   }
 
   const baseUrl = normalizeString(raw.baseUrl);
+  const confirmationMode = raw.confirmationMode ?? 'review_once';
+  if (!['review_once', 'auto_commit_safe'].includes(confirmationMode)) {
+    throw new ApiSettingsError('確認模式格式無效');
+  }
 
   if (baseUrl) {
     let parsed;
@@ -114,6 +119,7 @@ export function normalizeApiSettings(raw = {}) {
     validationModel: normalizeString(raw.validationModel),
     temperature,
     maxOutputTokens: value,
+    confirmationMode,
   };
 }
 
