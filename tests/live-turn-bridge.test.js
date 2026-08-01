@@ -117,5 +117,27 @@ test('live bridge de-duplicates one message and ignores swipe or regenerate inte
 });
 
 test('analysis input sanitizer removes hidden thinking, comments, and control text', () => {
-  assert.equal(sanitizeAnalysisContent('<!-- x --><thinking>secret</thinking>正文\nStatements Refused: hidden'), '正文');
+  assert.equal(sanitizeAnalysisContent('<!-- x --><title>title</title><content>wrapped</content><thinking>secret</thinking>正文\nStatements Refused: hidden'), '正文');
+});
+
+test('validation warning keeps live candidates in manual review and disables safe auto commit', async () => {
+  const env = createDomApp(new Map([['chat:one', createChatState(NOW)]]));
+  env.settingsStore.save({ ...env.settingsStore.load(), confirmationMode: 'auto_commit_safe' });
+  env.context.chat.push({ id: 'assistant-warning', is_user: false, mes: '申時初。' });
+  const app = mountFushengluApp({
+    store: env.store,
+    settingsStore: env.settingsStore,
+    apiClient: { async analyzeMessages(messages) { return { ...analysisFor(messages), validationWarning: { schemaVersion: 1, reasonCode: 'validation_response_invalid', message: '校驗模型回應格式無法辨識；請人工確認。', issues: [] } }; } },
+    documentRef: env.document,
+  });
+  await flush();
+  const bridge = new TauriTavernLiveTurnBridge({ root: env.host, queueLiveTurnAnalysis: app.queueLiveTurnAnalysis });
+  const stop = bridge.start();
+  [...env.listeners.get('received')][0](0, 'normal');
+  await flush(); await flush(); await flush();
+  const saved = await env.store.read();
+  assert.equal(saved.state.batches.at(-1).status, 'review_ready');
+  assert.equal(saved.state.committedBatchIds.length, 0);
+  assert.equal(saved.state.batches.at(-1).validationWarning.reasonCode, 'validation_response_invalid');
+  stop(); app.destroy(); env.destroy();
 });

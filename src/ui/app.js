@@ -578,6 +578,11 @@ export function mountFushengluApp({
           ? `<aside class="fushenglu-notice" data-kind="error">${escapeHtml(batch.failureMessage)}</aside>`
           : ''
       }
+      ${
+        batch.validationWarning
+          ? `<aside class="fushenglu-notice" data-kind="warning" data-validation-warning="${escapeHtml(batch.validationWarning.reasonCode ?? 'validation_warning')}">${escapeHtml(batch.validationWarning.message ?? '校驗模型未完成；請人工確認本輪候選。')}</aside>`
+          : ''
+      }
       <section class="fushenglu-card">
         <h2>本輪安全變化 ${summary.total} 項</h2>
         <p>時間 ${summary.counts.time} · 地點 ${summary.counts.place} · 物品 ${summary.counts.inventory} · 人物 ${summary.counts.person} · 關係 ${summary.counts.relationship} · 其他 ${summary.counts.other}</p>
@@ -1107,7 +1112,7 @@ export function mountFushengluApp({
     if (settings.confirmationMode !== 'auto_commit_safe' || autoCommittingBatchIds.has(batchId)) return;
     const saved = await store.read();
     const batch = getBatch(saved.state, batchId);
-    if (!batch || batch.status !== 'review_ready' || reviewSummary(batch).total === 0) return;
+    if (!batch || batch.status !== 'review_ready' || batch.validationWarning || reviewSummary(batch).total === 0) return;
     autoCommittingBatchIds.add(batchId);
     try {
       await finishCommit(batchId);

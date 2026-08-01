@@ -1,8 +1,7 @@
 import {
   AnalysisSchemaError,
   VALIDATION_RESULT_JSON_SCHEMA,
-  parseJsonObject,
-  validateValidationResult,
+  parseAndValidateValidationResult,
 } from './analysis-schema.js';
 import {
   FLAT_STORY_ANALYSIS_JSON_SCHEMA,
@@ -360,6 +359,20 @@ function safeErrorSummary(payload, status) {
   const code =
     typeof payload?.error?.code === 'string' ? payload.error.code : null;
   return { message, code };
+}
+
+function validationWarning(reasonCode, issues = []) {
+  const messages = {
+    validation_rejected: '校驗模型提出疑慮；分析候選已保留，請人工確認。',
+    validation_response_invalid: '校驗模型回應格式無法辨識；分析候選已保留，請人工確認。',
+    validation_api_unavailable: '校驗模型暫時無法使用；分析候選已保留，請人工確認。',
+  };
+  return {
+    schemaVersion: 1,
+    reasonCode,
+    message: messages[reasonCode] ?? messages.validation_response_invalid,
+    issues: issues.filter((issue) => typeof issue === 'string').slice(0, 8),
+  };
 }
 
 const FLAT_ANALYSIS_OUTPUT_TEMPLATE = {
@@ -828,32 +841,56 @@ export class OpenAICompatibleClient {
     const settings = this.settingsStore.load();
 
     if (settings.validationModel) {
-      const validationContent = await this.request(
-        'validation',
-        [
+      const validateResult = async (candidateResult) => {
+        const validationContent = await this.request(
+          'validation',
+          [
+            {
+              role: 'system',
+              content:
+                '請只輸出 JSON：{"schemaVersion":1,"valid":boolean,"issues":[]}。校驗分析候選是否可安全交由本地規則處理。',
+            },
+            {
+              role: 'user',
+              content: JSON.stringify({ messages, result: candidateResult }),
+            },
+          ],
           {
-            role: 'system',
-            content:
-              '校驗候選分析是否忠於輸入證據且無直接套用指令。只輸出指定 JSON。',
+            jsonSchema: VALIDATION_RESULT_JSON_SCHEMA,
+            temperature: 0,
           },
-          {
-            role: 'user',
-            content: JSON.stringify({ messages, result }),
-          },
-        ],
-        {
-          jsonSchema: VALIDATION_RESULT_JSON_SCHEMA,
-          temperature: 0,
-        },
-      );
-      const validation = validateValidationResult(
-        parseJsonObject(validationContent),
-      );
-
-      if (!validation.valid) {
-        throw new ApiRequestError(
-          `校驗模型拒絕分析：${validation.issues.join('；') || '未提供原因'}`,
         );
+        return parseAndValidateValidationResult(validationContent);
+      };
+
+      try {
+        let validation = await validateResult(result);
+
+        if (!validation.valid) {
+          // A validator objection must never discard analysis that passed the
+          // local schema.  This one bounded repair attempt is advisory only.
+          result = await this.repairIncompleteAnalysis(result, messages, {
+            batchId: `${batchId}:validation-repair`,
+            maxRequests: 1,
+          });
+          validation = await validateResult(result);
+        }
+
+        if (!validation.valid) {
+          result.validationWarning = validationWarning(
+            'validation_rejected',
+            validation.issues,
+          );
+        }
+      } catch (error) {
+        const reasonCode = error instanceof AnalysisSchemaError
+          ? 'validation_response_invalid'
+          : 'validation_api_unavailable';
+        result.validationWarning = validationWarning(reasonCode);
+        this.logger.warn('校驗模型未完成；保留本地 Schema 已通過的分析候選。', {
+          batchId,
+          reasonCode,
+        });
       }
     }
 
