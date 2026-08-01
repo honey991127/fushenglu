@@ -1,9 +1,9 @@
-import { maskApiKey, redactSensitive } from '../core/api-client.07c611401269.js';
+import { maskApiKey, redactSensitive } from '../core/api-client.67c0a94c5335.js';
 import {
   createEmptyAnalysisResult,
   mergeAnalysisResults,
   splitAnalysisMessages,
-} from '../core/analysis-schema.8252ea5a6bb2.js';
+} from '../core/analysis-schema.121cc632bc92.js';
 import { createCharacterAction } from '../core/character-state.248f6757f446.js';
 import { resetCurrentChatData } from '../core/chat-state.6be1c4db8d30.js';
 import { confirmWorldRule, deleteWorldRule, editWorldRule, rejectWorldRule } from '../core/world-rules.2081a04b5f58.js';
@@ -17,7 +17,7 @@ import {
 import {
   analysisResultFromBatch,
   listIncompleteProposals,
-} from '../core/proposal-repair.505675c642f9.js';
+} from '../core/proposal-repair.5af4aa9c372c.js';
 import {
   addDraftAction,
   beginTurnBatch,
@@ -41,8 +41,8 @@ import {
   updateHandoffItem,
   normalizeChatMessages,
   sanitizeAnalysisContent,
-} from '../core/turn-sync.552882e37be5.js';
-import { NoActiveChatError } from '../integrations/tauritavern.7f207f9ed485.js';
+} from '../core/turn-sync.4c767e17396f.js';
+import { NoActiveChatError } from '../integrations/tauritavern.fe512ea5598e.js';
 import {
   APP_VERSION,
   MANIFEST_VERSION,
@@ -578,6 +578,11 @@ export function mountFushengluApp({
           ? `<aside class="fushenglu-notice" data-kind="error">${escapeHtml(batch.failureMessage)}</aside>`
           : ''
       }
+      ${
+        batch.validationWarning
+          ? `<aside class="fushenglu-notice" data-kind="warning" data-validation-warning="${escapeHtml(batch.validationWarning.reasonCode ?? 'validation_warning')}">${escapeHtml(batch.validationWarning.message ?? '校驗模型未完成；請人工確認本輪候選。')}</aside>`
+          : ''
+      }
       <section class="fushenglu-card">
         <h2>本輪安全變化 ${summary.total} 項</h2>
         <p>時間 ${summary.counts.time} · 地點 ${summary.counts.place} · 物品 ${summary.counts.inventory} · 人物 ${summary.counts.person} · 關係 ${summary.counts.relationship} · 其他 ${summary.counts.other}</p>
@@ -1107,7 +1112,7 @@ export function mountFushengluApp({
     if (settings.confirmationMode !== 'auto_commit_safe' || autoCommittingBatchIds.has(batchId)) return;
     const saved = await store.read();
     const batch = getBatch(saved.state, batchId);
-    if (!batch || batch.status !== 'review_ready' || reviewSummary(batch).total === 0) return;
+    if (!batch || batch.status !== 'review_ready' || batch.validationWarning || reviewSummary(batch).total === 0) return;
     autoCommittingBatchIds.add(batchId);
     try {
       await finishCommit(batchId);

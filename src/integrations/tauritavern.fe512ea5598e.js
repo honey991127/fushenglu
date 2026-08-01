@@ -9,7 +9,7 @@ import {
   consumeNextGeneration,
   normalizeChatMessages,
   recordHandoffInjection,
-} from '../core/turn-sync.552882e37be5.js';
+} from '../core/turn-sync.4c767e17396f.js';
 
 export const CHAT_METADATA_KEY = 'fushenglu.chatState';
 export const HANDOFF_PROMPT_KEY = 'fushenglu.handoff';

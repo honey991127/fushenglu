@@ -610,3 +610,24 @@ export function validateValidationResult(value) {
     issues: [...issues],
   };
 }
+
+export function normalizeValidationResult(value) {
+  let current = value;
+
+  // Providers often wrap structured JSON in a successful result/data/output
+  // envelope.  This is a transport compatibility step, not a relaxation of
+  // the final validation schema.
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (!isPlainObject(current) || typeof current.valid === 'boolean') break;
+    const wrapper = ['result', 'data', 'output'].find((key) => Object.hasOwn(current, key));
+    if (!wrapper) break;
+    current = current[wrapper];
+    if (typeof current === 'string') current = parseJsonObject(current);
+  }
+
+  return validateValidationResult(current);
+}
+
+export function parseAndValidateValidationResult(content) {
+  return normalizeValidationResult(parseJsonObject(content));
+}

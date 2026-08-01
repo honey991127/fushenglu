@@ -2,7 +2,7 @@ import {
   ANALYSIS_CHANGE_BUCKETS,
   assertAnalysisResult,
   createEmptyAnalysisResult,
-} from './analysis-schema.8252ea5a6bb2.js';
+} from './analysis-schema.121cc632bc92.js';
 import { actionRequiresPending } from './character-state.248f6757f446.js';
 import { rebuildChatStateSnapshot } from './chat-state.6be1c4db8d30.js';
 import { applyAnalysisPolicy } from './analysis-policy.f7f8e3ed9cbc.js';
@@ -10,7 +10,7 @@ import { createFactKey } from './fact-key.0f9d5b48a24e.js';
 import { createEventId } from './event-id.d553cbd953d1.js';
 import {
   inspectProposalPayload,
-} from './proposal-repair.505675c642f9.js';
+} from './proposal-repair.5af4aa9c372c.js';
 import { canonicalHandoffSections } from './snapshot-handoff.a23e1c65a9e3.js';
 
 export const BATCH_STATUSES = Object.freeze([
@@ -149,6 +149,8 @@ function normalizeContent(message) {
 export function sanitizeAnalysisContent(value) {
   return String(value ?? '')
     .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<title\b[^>]*>[\s\S]*?<\/title\s*>/gi, '')
+    .replace(/<content\b[^>]*>[\s\S]*?<\/content\s*>/gi, '')
     .replace(/<(?:thinking|analysis|reflection)\b[^>]*>[\s\S]*?<\/(?:thinking|analysis|reflection)\s*>/gi, '')
     .replace(/^\s*(?:statements?\s+refused|internal\s+instructions?|control\s+message)\s*:?.*$/gim, '')
     .trim();
@@ -461,6 +463,7 @@ export function beginTurnBatch(
     pendingItemIds: [],
     failurePhase: null,
     failureMessage: null,
+    validationWarning: null,
     retryCount: 0,
     revertedByBatchId: null,
     deletedAt: null,
@@ -607,6 +610,7 @@ export function completeBatchAnalysis(
       handoffDrafts,
       failurePhase: null,
       failureMessage: null,
+      validationWarning: analysis.validationWarning ?? null,
     },
     'review_ready',
     requireTimestamp(timestamp),
@@ -688,6 +692,7 @@ export function refreshBatchAnalysis(
     uncertainItems,
     evidence: clone(analysis.evidence),
     handoffDrafts,
+    validationWarning: analysis.validationWarning ?? batch.validationWarning ?? null,
     updatedAt: requireTimestamp(timestamp),
   };
 
@@ -1462,6 +1467,7 @@ function resolutionBatch(batchId, pending, decision, timestamp) {
     pendingItemIds: [pending.pendingId],
     failurePhase: null,
     failureMessage: null,
+    validationWarning: null,
     retryCount: 0,
     revertedByBatchId: null,
     deletedAt: null,
