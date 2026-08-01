@@ -24,6 +24,9 @@ function createFakeTavern() {
   const saves = [];
   const chatSaves = [];
   const prompts = new Map();
+  let saveMetadataImplementation = async (chatId) => {
+    saves.push(chatId);
+  };
 
   function metadataFor(chatId) {
     if (!metadataByChat.has(chatId)) {
@@ -66,9 +69,7 @@ function createFakeTavern() {
           getCurrentChatId: () => capturedChatId,
           chatMetadata: metadataFor(capturedChatId),
           chat: chatById.get(capturedChatId) ?? [],
-          saveMetadata: async () => {
-            saves.push(capturedChatId);
-          },
+          saveMetadata: () => saveMetadataImplementation(capturedChatId),
           saveChat: async () => {
             chatSaves.push(capturedChatId);
           },
@@ -90,6 +91,10 @@ function createFakeTavern() {
     chatSaves,
     prompts,
     eventSource,
+    listeners,
+    setSaveMetadataImplementation(fn) {
+      saveMetadataImplementation = fn;
+    },
     switchChat(chatId) {
       currentChatId = chatId;
 
@@ -228,6 +233,8 @@ test('最小交接只在 assistant 回覆保存成功後消耗 next_generation',
   });
   const stop = bridge.start();
 
+  bridge.syncSavedState(state);
+
   await fake.eventSource.emit('generation_after_commands', 'normal', {}, false);
   assert.match(fake.prompts.get(HANDOFF_PROMPT_KEY).text, /藏書閣/);
 
@@ -239,4 +246,91 @@ test('最小交接只在 assistant 回覆保存成功後消耗 next_generation',
   assert.equal(saved.state.handoffItems[0].consumedAt, NOW);
   assert.deepEqual(fake.chatSaves, ['chat-a']);
   stop();
+});
+
+function nextGenerationState() {
+  const state = createChatState(NOW);
+  state.handoffItems.push({
+    schemaVersion: 1,
+    handoffId: 'handoff-next',
+    batchId: 'batch-next',
+    text: '目前在書房。',
+    mode: 'next_generation',
+    stateType: 'current_place',
+    active: true,
+    sourceEventIds: ['event-next'],
+    lastInjectedGenerationId: null,
+    consumedAt: null,
+    replacedBy: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    deletedAt: null,
+  });
+  return state;
+}
+
+test('generation listener returns undefined and creates active generation synchronously', () => {
+  const fake = createFakeTavern();
+  const store = new TauriTavernChatStateStore({ root: fake.root, now: () => NOW });
+  const bridge = new TauriTavernHandoffBridge({ store, root: fake.root, now: () => NOW, createGenerationId: () => 'generation-sync' });
+  const state = nextGenerationState();
+  bridge.syncSavedState(state);
+  const stop = bridge.start();
+  const listener = [...fake.listeners.get('generation_after_commands')][0];
+
+  assert.equal(listener('normal', {}, false), undefined);
+  assert.equal(bridge.activeGeneration.generationId, 'generation-sync');
+  assert.match(fake.prompts.get(HANDOFF_PROMPT_KEY).text, /書房/);
+  stop();
+});
+
+test('pending or rejected metadata bookkeeping never blocks host generation', async () => {
+  const fake = createFakeTavern();
+  const store = new TauriTavernChatStateStore({ root: fake.root, now: () => NOW });
+  const bridge = new TauriTavernHandoffBridge({ store, root: fake.root, now: () => NOW, createGenerationId: () => 'generation-background' });
+  bridge.syncSavedState(nextGenerationState());
+  const stop = bridge.start();
+  const listener = [...fake.listeners.get('generation_after_commands')][0];
+  fake.setSaveMetadataImplementation(() => new Promise(() => {}));
+  assert.equal(listener('normal', {}, false), undefined);
+  assert.equal(bridge.activeGeneration.generationId, 'generation-background');
+
+  let unhandled = null;
+  const onUnhandled = (error) => { unhandled = error; };
+  process.once('unhandledRejection', onUnhandled);
+  fake.setSaveMetadataImplementation(async () => { throw new Error('metadata rejected'); });
+  assert.equal(listener('continue', {}, false), undefined);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  process.removeListener('unhandledRejection', onUnhandled);
+  assert.equal(unhandled, null);
+  stop();
+});
+
+test('generation start never reads state or calls an independent analysis API', () => {
+  const fake = createFakeTavern();
+  let reads = 0;
+  const store = {
+    read() { reads += 1; return Promise.resolve({ chatId: 'chat-a', state: nextGenerationState() }); },
+    update() { return Promise.resolve({}); },
+  };
+  const bridge = new TauriTavernHandoffBridge({ store, root: fake.root, now: () => NOW, createGenerationId: () => 'generation-no-read' });
+  bridge.syncSavedState(nextGenerationState());
+  const stop = bridge.start();
+  const listener = [...fake.listeners.get('generation_after_commands')][0];
+  const readsBeforeGeneration = reads;
+  listener('normal', {}, false);
+
+  assert.equal(reads, readsBeforeGeneration);
+  assert.equal(bridge.activeGeneration.generationId, 'generation-no-read');
+  stop();
+});
+
+test('stopping bridge removes non-blocking generation listener', () => {
+  const fake = createFakeTavern();
+  const store = new TauriTavernChatStateStore({ root: fake.root, now: () => NOW });
+  const bridge = new TauriTavernHandoffBridge({ store, root: fake.root });
+  const stop = bridge.start();
+  assert.equal(fake.listeners.get('generation_after_commands').size, 1);
+  stop();
+  assert.equal(fake.listeners.get('generation_after_commands').size, 0);
 });

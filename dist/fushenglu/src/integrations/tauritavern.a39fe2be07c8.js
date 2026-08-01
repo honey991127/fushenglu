@@ -309,6 +309,8 @@ export class TauriTavernHandoffBridge {
     this.createGenerationId = createGenerationId;
     this.finalizeDelayMs = finalizeDelayMs;
     this.activeGeneration = null;
+    this.cachedInjection = { text: '', itemIds: [] };
+    this.cachedChatId = null;
     this.unsubscribers = [];
     this.chatSwitchToken = 0;
   }
@@ -326,6 +328,8 @@ export class TauriTavernHandoffBridge {
 
   syncHostPromptFromChatState(context, chatState) {
     const injection = buildHandoffInjection(chatState);
+    this.cachedInjection = injection;
+    this.cachedChatId = getChatId(context);
     this.setPrompt(context, injection.text);
     return injection;
   }
@@ -334,17 +338,34 @@ export class TauriTavernHandoffBridge {
     this.syncHostPromptFromChatState(requireCapabilities(this.root), chatState);
   }
 
-  async syncAfterChatChanged() {
+  async syncAfterChatChanged({ clearPrompt = true } = {}) {
     const token = ++this.chatSwitchToken;
     const context = requireCapabilities(this.root);
-    this.setPrompt(context, '');
+    if (clearPrompt) {
+      this.cachedInjection = { text: '', itemIds: [] };
+      this.cachedChatId = null;
+      this.setPrompt(context, '');
+    }
     const chatId = getChatId(context);
     const saved = await this.store.read();
     if (token !== this.chatSwitchToken || saved.chatId !== chatId) return;
     this.syncHostPromptFromChatState(context, saved.state);
   }
 
-  async onGenerationStart(type, _options, dryRun = false) {
+  reportBackgroundFailure() {
+    this.root.console?.warn?.('浮生錄交接 bookkeeping 儲存失敗；不影響主聊天生成。');
+  }
+
+  queueHandoffInjection(generationId, itemIds) {
+    if (itemIds.length === 0) return;
+    void this.store
+      .update((state) =>
+        recordHandoffInjection(state, generationId, itemIds, this.now()),
+      )
+      .catch(() => this.reportBackgroundFailure());
+  }
+
+  onGenerationStart(type, _options, dryRun = false) {
     const context = requireCapabilities(this.root);
     const capabilities = inspectHandoffCapabilities(context);
 
@@ -363,22 +384,9 @@ export class TauriTavernHandoffBridge {
 
     const chatId = getChatId(context);
     const generationId = this.createGenerationId();
-    let injection = { text: '', itemIds: [] };
-
-    await this.store.update((state) => {
-      injection = buildHandoffInjection(state);
-
-      if (injection.itemIds.length === 0) {
-        return state;
-      }
-
-      return recordHandoffInjection(
-        state,
-        generationId,
-        injection.itemIds,
-        this.now(),
-      );
-    });
+    const injection = this.cachedChatId === chatId
+      ? this.cachedInjection
+      : { text: '', itemIds: [] };
     this.setPrompt(context, injection.text);
     this.activeGeneration = {
       generationId,
@@ -387,6 +395,7 @@ export class TauriTavernHandoffBridge {
       itemIds: injection.itemIds,
       handled: false,
     };
+    this.queueHandoffInjection(generationId, injection.itemIds);
   }
 
   onGenerationStopped() {
@@ -408,7 +417,9 @@ export class TauriTavernHandoffBridge {
     generation.handled = true;
     const schedule = this.root.setTimeout?.bind(this.root) ?? setTimeout;
     schedule(() => {
-      void this.confirmHostSave(generation, messageId, type);
+      void this.confirmHostSave(generation, messageId, type).catch(() =>
+        this.reportBackgroundFailure(),
+      );
     }, this.finalizeDelayMs);
   }
 
@@ -469,8 +480,9 @@ export class TauriTavernHandoffBridge {
     const eventTypes = getEventTypes(context);
     const generationEvent =
       eventTypes.GENERATION_AFTER_COMMANDS ?? eventTypes.GENERATION_STARTED;
-    const generationHandler = (type, options, dryRun) =>
+    const generationHandler = (type, options, dryRun) => {
       this.onGenerationStart(type, options, dryRun);
+    };
     const receivedHandler = (messageId, type) =>
       this.onMessageReceived(messageId, type);
     const stoppedHandler = () => this.onGenerationStopped();
@@ -495,6 +507,8 @@ export class TauriTavernHandoffBridge {
         removeListener(context, eventTypes.GENERATION_STOPPED, stoppedHandler),
       );
     }
+
+    void this.syncAfterChatChanged({ clearPrompt: false }).catch(() => this.reportBackgroundFailure());
 
     return () => this.stop();
   }
