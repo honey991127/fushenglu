@@ -8,6 +8,7 @@ import { createChatState } from '../src/core/chat-state.js';
 import { createEventId } from '../src/core/event-id.js';
 import { createFactKey } from '../src/core/fact-key.js';
 import { classifyCandidate } from '../src/core/semantic-classifier.js';
+import { beginTurnBatch, completeBatchAnalysis } from '../src/core/turn-sync.js';
 
 const NOW = '2026-07-31T00:00:00.000Z';
 
@@ -88,6 +89,32 @@ test('invalid kind, operation, and evidence have explicit validation errors', ()
   assert.throws(() => normalizeCandidate(rawCandidate({ kind: 'unknown_kind' })), CandidateValidationError);
   assert.throws(() => normalizeCandidate(rawCandidate({ operation: 'teleport' })), CandidateValidationError);
   assert.throws(() => normalizeCandidate(rawCandidate({ evidence: undefined, evidenceMessageRef: undefined })), CandidateValidationError);
+});
+
+test('person_state operations normalize explicit aliases into supported domain operations', () => {
+  const base = {
+    kind: 'person_state', operation: 'record', subjectRef: { entityId: 'entity:npc:mo', role: 'npc' },
+    value: { status: '左臂受傷', stateType: 'durable' }, timelineContext: 'main',
+    evidence: { messageRef: 'message:person', messageIndex: 0, quote: '墨錚左臂受傷。', evidenceOrder: 0 }, confidence: 0.9,
+  };
+  assert.equal(normalizeCandidate(base).operation, 'create');
+  assert.equal(normalizeCandidate({ ...base, operation: 'update' }).operation, 'set');
+  assert.equal(normalizeCandidate({ ...base, operation: 'remove' }).operation, 'clear');
+});
+
+test('unsupported operation is isolated as pending while valid candidates keep a review-ready batch', () => {
+  const analysis = createEmptyAnalysisResult();
+  analysis.storyTimeChanges.push({ proposalId: 'time', kind: 'story_time', operation: 'set', value: { time: '三月十八申時' }, confidence: 0.99, evidenceMessageRef: 'message:time', reason: '明確時間', severity: 'minor', dedupeKey: 'ignored', timelineContext: 'main' });
+  analysis.personChanges.push({ proposalId: 'bad-person', kind: 'person', operation: 'unsupported_phrase', value: { status: '受傷', stateType: 'durable' }, confidence: 0.9, evidenceMessageRef: 'message:person', reason: '人物狀態', severity: 'minor', dedupeKey: 'ignored', timelineContext: 'main' });
+  analysis.evidence.push({ messageRef: 'message:time', quote: '三月十八申時。' }, { messageRef: 'message:person', quote: '角色受傷。' });
+  const started = beginTurnBatch(createChatState(NOW), [], { batchId: 'isolated-operation', timestamp: NOW }).state;
+  const completed = completeBatchAnalysis(started, 'isolated-operation', analysis, NOW);
+  const batch = completed.batches[0];
+  assert.equal(batch.status, 'review_ready');
+  assert.equal(batch.detectedChanges.length, 1);
+  assert.equal(batch.uncertainItems.length, 1);
+  assert.equal(batch.uncertainItems[0].reasonCode, 'unsupported_operation');
+  assert.equal(batch.uncertainItems[0].modelOperation, 'unsupported_phrase');
 });
 
 test('policy output is compatible with V5 state and ignores model buckets', () => {

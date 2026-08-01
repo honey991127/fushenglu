@@ -41,8 +41,8 @@ import {
   updateHandoffItem,
   normalizeChatMessages,
   sanitizeAnalysisContent,
-} from '../core/turn-sync.4c767e17396f.js';
-import { NoActiveChatError } from '../integrations/tauritavern.fe512ea5598e.js';
+} from '../core/turn-sync.60a675efea4b.js';
+import { NoActiveChatError } from '../integrations/tauritavern.2353b7096e97.js';
 import {
   APP_VERSION,
   MANIFEST_VERSION,
@@ -847,7 +847,11 @@ export function mountFushengluApp({
       const failure = batch.status === 'failed' && batch.failureMessage
         ? `<p class="fushenglu-muted">分析失敗：${escapeHtml(batch.failureMessage)}</p>`
         : '';
-      return `<article class="fushenglu-card" data-live-batch="${escapeHtml(batch.batchId)}" data-live-batch-status="${escapeHtml(batch.status)}"><h2>本輪分析・${escapeHtml(statusLabel(batch.status))}</h2><p>建立時間：${escapeHtml(batch.createdAt)}</p><p>候選：${candidateCount}</p>${assistant ? `<p class="fushenglu-muted">來源訊息：${escapeHtml(sanitizeAnalysisContent(assistant.content).slice(0, 160) || '（沒有可分析的可見正文）')}</p>` : ''}${failure}</article>`;
+      const isolated = (batch.uncertainItems ?? []).filter((item) => item.reasonCode === 'unsupported_operation' || item.reasonCode === 'candidate_validation_failed');
+      const isolation = isolated.length
+        ? `<p class="fushenglu-muted" data-analysis-isolation>已隔離 ${isolated.length} 項無法安全套用的候選：${escapeHtml(isolated.map((item) => item.modelOperation || '未提供操作').join('、'))}；請在待確認中處理。</p>`
+        : '';
+      return `<article class="fushenglu-card" data-live-batch="${escapeHtml(batch.batchId)}" data-live-batch-status="${escapeHtml(batch.status)}"><h2>本輪分析・${escapeHtml(statusLabel(batch.status))}</h2><p>建立時間：${escapeHtml(batch.createdAt)}</p><p>候選：${candidateCount}</p>${assistant ? `<p class="fushenglu-muted">來源訊息：${escapeHtml(sanitizeAnalysisContent(assistant.content).slice(0, 160) || '（沒有可分析的可見正文）')}</p>` : ''}${isolation}${failure}</article>`;
     }).join('');
     const handledCards = handled.map((item) => `<article class="fushenglu-card"><h2>${escapeHtml(pendingQuestion(item))}</h2><p>結果：${escapeHtml(item.status)} · ${escapeHtml(item.updatedAt || item.resolvedAt || '處理時間未記錄')}</p>${shortEvidence(item) ? `<p class="fushenglu-muted">來源：${escapeHtml(shortEvidence(item))}</p>` : ''}<details class="fushenglu-management-only"><summary>技術資料</summary><p>來源批次：${escapeHtml(item.batchId || '未記錄')}</p></details></article>`).join('');
     screen.innerHTML = `<section class="fushenglu-section-heading"><div><p>處理過程</p><h2>處理紀錄</h2></div></section>${liveCards}${handledCards || (!liveCards ? '<section class="fushenglu-empty"><h2>尚無處理紀錄</h2></section>' : '')}${allHandled.length > handled.length ? '<button type="button" data-action="show-more-records">顯示更多</button>' : ''}`;

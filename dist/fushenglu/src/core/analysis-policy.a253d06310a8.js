@@ -1,6 +1,6 @@
-import { normalizeCandidate } from './candidate-normalizer.js';
-import { resolveIdentity } from './history-consolidation.js';
-import { classifyCandidate } from './semantic-classifier.js';
+import { normalizeCandidate } from './candidate-normalizer.f9130cb34bf7.js';
+import { resolveIdentity } from './history-consolidation.bbbff84b6958.js';
+import { classifyCandidate } from './semantic-classifier.412582037586.js';
 
 const BUCKETS = ['storyTimeChanges','inventoryChanges','currencyChanges','wardrobeChanges','skillChanges','cultivationChanges','personChanges','placeChanges','evaluationChanges','uncertainItems'];
 

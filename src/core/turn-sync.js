@@ -152,6 +152,8 @@ export function sanitizeAnalysisContent(value) {
     .replace(/<title\b[^>]*>[\s\S]*?<\/title\s*>/gi, '')
     .replace(/<content\b[^>]*>[\s\S]*?<\/content\s*>/gi, '')
     .replace(/<(?:thinking|analysis|reflection)\b[^>]*>[\s\S]*?<\/(?:thinking|analysis|reflection)\s*>/gi, '')
+    .replace(/<(?:style|script)\b[^>]*>[\s\S]*?<\/(?:style|script)\s*>/gi, '')
+    .replace(/<[^>]+>/g, '')
     .replace(/^\s*(?:statements?\s+refused|internal\s+instructions?|control\s+message)\s*:?.*$/gim, '')
     .trim();
 }
@@ -513,6 +515,7 @@ function createReviewItem(classified) {
     proposalId: candidate.modelProposalId ?? 'policy_' + candidate.factKey,
     kind: legacyKind,
     operation: candidate.operation,
+    modelOperation: candidate.modelOperation ?? candidate.operation,
     value: clone(candidate.normalizedValue),
     confidence: candidate.confidence,
     evidenceMessageRef: candidate.evidence.messageRef,

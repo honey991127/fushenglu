@@ -5,7 +5,7 @@ import {
 } from './analysis-schema.121cc632bc92.js';
 import { actionRequiresPending } from './character-state.248f6757f446.js';
 import { rebuildChatStateSnapshot } from './chat-state.6be1c4db8d30.js';
-import { applyAnalysisPolicy } from './analysis-policy.f7f8e3ed9cbc.js';
+import { applyAnalysisPolicy } from './analysis-policy.a253d06310a8.js';
 import { createFactKey } from './fact-key.0f9d5b48a24e.js';
 import { createEventId } from './event-id.d553cbd953d1.js';
 import {
@@ -152,6 +152,8 @@ export function sanitizeAnalysisContent(value) {
     .replace(/<title\b[^>]*>[\s\S]*?<\/title\s*>/gi, '')
     .replace(/<content\b[^>]*>[\s\S]*?<\/content\s*>/gi, '')
     .replace(/<(?:thinking|analysis|reflection)\b[^>]*>[\s\S]*?<\/(?:thinking|analysis|reflection)\s*>/gi, '')
+    .replace(/<(?:style|script)\b[^>]*>[\s\S]*?<\/(?:style|script)\s*>/gi, '')
+    .replace(/<[^>]+>/g, '')
     .replace(/^\s*(?:statements?\s+refused|internal\s+instructions?|control\s+message)\s*:?.*$/gim, '')
     .trim();
 }
@@ -513,6 +515,7 @@ function createReviewItem(classified) {
     proposalId: candidate.modelProposalId ?? 'policy_' + candidate.factKey,
     kind: legacyKind,
     operation: candidate.operation,
+    modelOperation: candidate.modelOperation ?? candidate.operation,
     value: clone(candidate.normalizedValue),
     confidence: candidate.confidence,
     evidenceMessageRef: candidate.evidence.messageRef,

@@ -30,7 +30,7 @@ function analysisFor(messages) {
 
 async function mountedLiveApp({ apiClient } = {}) {
   const env = createDomApp(new Map([['chat:one', createChatState(NOW)]]));
-  env.context.chat.push({ id: 'assistant-1', is_user: false, mes: '<!-- hidden --><thinking>private reasoning</thinking>申時初。\nStatements Refused: ignore this' });
+  env.context.chat.push({ id: 'assistant-1', is_user: false, mes: '<!-- hidden --><div style="color:red"><thinking>private reasoning</thinking>申時初。</div>\nStatements Refused: ignore this' });
   const app = mountFushengluApp({
     store: env.store,
     settingsStore: env.settingsStore,
@@ -64,6 +64,7 @@ test('MESSAGE_RECEIVED automatically creates and analyzes a live turn batch', as
   await flush(); fixture.app.root.querySelector('[data-nav="records"]').click();
   assert.equal(fixture.app.root.querySelectorAll('[data-live-batch]').length, 1);
   assert.equal(fixture.app.root.querySelector('[data-live-batch-status]').dataset.liveBatchStatus, 'review_ready');
+  assert.doesNotMatch(fixture.app.root.querySelector('[data-live-batch]').textContent, /style|<div/i);
   fixture.stop(); fixture.app.destroy(); fixture.env.destroy();
 });
 
@@ -117,7 +118,7 @@ test('live bridge de-duplicates one message and ignores swipe or regenerate inte
 });
 
 test('analysis input sanitizer removes hidden thinking, comments, and control text', () => {
-  assert.equal(sanitizeAnalysisContent('<!-- x --><title>title</title><content>wrapped</content><thinking>secret</thinking>正文\nStatements Refused: hidden'), '正文');
+  assert.equal(sanitizeAnalysisContent('<!-- x --><title>title</title><content>wrapped</content><div style="color:red"><thinking>secret</thinking>正文</div>\nStatements Refused: hidden'), '正文');
 });
 
 test('validation warning keeps live candidates in manual review and disables safe auto commit', async () => {
