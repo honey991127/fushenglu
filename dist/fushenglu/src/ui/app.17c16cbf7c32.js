@@ -5,8 +5,8 @@ import {
   splitAnalysisMessages,
 } from '../core/analysis-schema.8252ea5a6bb2.js';
 import { createCharacterAction } from '../core/character-state.248f6757f446.js';
-import { resetCurrentChatData } from '../core/chat-state.e200863a8b54.js';
-import { confirmWorldRule, deleteWorldRule, editWorldRule, rejectWorldRule } from '../core/world-rules.00f5e453f139.js';
+import { resetCurrentChatData } from '../core/chat-state.6be1c4db8d30.js';
+import { confirmWorldRule, deleteWorldRule, editWorldRule, rejectWorldRule } from '../core/world-rules.2081a04b5f58.js';
 import { containerText, escapeHtml as escapePresentationHtml, formatReviewItem, homeModel, ownershipText, pendingOptions, pendingQuestion, quantityText, reviewSummary, shortEvidence } from './presentation.3d53c168a555.js';
 import {
   buildRollingContext,
@@ -40,8 +40,8 @@ import {
   updateBatchProposal,
   updateHandoffItem,
   normalizeChatMessages,
-} from '../core/turn-sync.a6ad721fbef4.js';
-import { NoActiveChatError } from '../integrations/tauritavern.c23e8e335cb1.js';
+} from '../core/turn-sync.3277b52db040.js';
+import { NoActiveChatError } from '../integrations/tauritavern.df6834556639.js';
 import {
   APP_VERSION,
   MANIFEST_VERSION,

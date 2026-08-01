@@ -388,6 +388,21 @@ function normalizeV2(rawState) {
   };
 }
 
+function hasValidHistoryImportProgress(progress) {
+  return Boolean(
+    progress &&
+    progress.schemaVersion === 1 &&
+    Number.isInteger(progress.pipelineVersion) &&
+    typeof progress.branchFingerprint === 'string' &&
+    typeof progress.messageRefsHash === 'string' &&
+    Array.isArray(progress.chunkBoundaries) &&
+    Array.isArray(progress.completedChunkIndexes) &&
+    (progress.failedChunkIndex === null || Number.isInteger(progress.failedChunkIndex)) &&
+    (progress.rollingContext === null || (typeof progress.rollingContext === 'object' && !Array.isArray(progress.rollingContext))) &&
+    (progress.updatedAt === null || (typeof progress.updatedAt === 'string' && !Number.isNaN(Date.parse(progress.updatedAt))))
+  );
+}
+
 function normalizeV4(rawState) {
   const normalized = normalizeV2({ ...rawState, schemaVersion: 2 });
   const rawCharacter = rawState.character;
@@ -397,20 +412,14 @@ function normalizeV4(rawState) {
   ) {
     throw new ChatStateMigrationError('character.schemaVersion invalid');
   }
-  const progress = rawState.historyImportProgress ?? createHistoryImportProgress();
-  if (
-    !progress ||
-    progress.schemaVersion !== 1 ||
-    !Number.isInteger(progress.pipelineVersion) ||
-    typeof progress.branchFingerprint !== 'string' ||
-    typeof progress.messageRefsHash !== 'string' ||
-    !Array.isArray(progress.chunkBoundaries) ||
-    !Array.isArray(progress.completedChunkIndexes) ||
-    !(progress.failedChunkIndex === null || Number.isInteger(progress.failedChunkIndex)) ||
-    !(progress.rollingContext === null || (typeof progress.rollingContext === 'object' && !Array.isArray(progress.rollingContext))) ||
-    !(progress.updatedAt === null || (typeof progress.updatedAt === 'string' && !Number.isNaN(Date.parse(progress.updatedAt))))
-  ) {
-    throw new ChatStateMigrationError('historyImportProgress format invalid');
+  const progress = rawState.historyImportProgress;
+  if (!hasValidHistoryImportProgress(progress)) {
+    return {
+      ...normalized,
+      schemaVersion: 4,
+      ...createDerivedState(normalized.events, normalized.updatedAt),
+      historyImportProgress: createHistoryImportProgress(),
+    };
   }
   return {
     ...normalized,
@@ -541,7 +550,12 @@ export function migrateChatState(rawState, timestamp = new Date().toISOString())
   if (sourceVersion < CHAT_STATE_SCHEMA_VERSION) {
     return { state: migrateV4ToV5(rawState), created: false, migrated: true, fromVersion: sourceVersion };
   }
-  return { state: normalizeV5(rawState), created: false, migrated: false, fromVersion: CHAT_STATE_SCHEMA_VERSION };
+  return {
+    state: normalizeV5(rawState),
+    created: false,
+    migrated: !hasValidHistoryImportProgress(rawState.historyImportProgress),
+    fromVersion: CHAT_STATE_SCHEMA_VERSION,
+  };
 }
 
 export function rebuildChatStateSnapshot(state, timestamp = null) {

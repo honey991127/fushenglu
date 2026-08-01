@@ -69,6 +69,48 @@ test('V5 rejects unknown future and malformed/polluted root data instead of gues
   assert.throws(() => migrateChatState(state, NOW), /entities.byId format invalid/);
 });
 
+test('legacy or malformed history progress resets alone without losing valid V5 roots', () => {
+  const state = createChatState(NOW);
+  state.events = [event({ eventId: 'event-1', subjectEntityId: 'entity:player' })];
+  state.eventLedger.eventIds = ['event-1'];
+  state.currentSnapshot.sourceEventIds = ['event-1'];
+  state.worldRules.entries = [{ schemaVersion: 1, ruleId: 'rule-1' }];
+  state.entities.byId = { 'entity:player': { schemaVersion: 1, entityId: 'entity:player' } };
+  state.relationships.entries = [{ schemaVersion: 1, relationshipId: 'relationship-1' }];
+  state.pendingDecisionRecords = [{ schemaVersion: 1, decisionId: 'decision-1' }];
+  state.historyImportProgress = { schemaVersion: 1, completedChunks: [0] };
+
+  const migrated = migrateChatState(state, NOW);
+
+  assert.equal(migrated.migrated, true);
+  assert.deepEqual(migrated.state.historyImportProgress.completedChunkIndexes, []);
+  assert.equal(migrated.state.historyImportProgress.failedChunkIndex, null);
+  assert.equal(migrated.state.events[0].eventId, 'event-1');
+  assert.deepEqual(migrated.state.eventLedger.eventIds, ['event-1']);
+  assert.equal(migrated.state.worldRules.entries[0].ruleId, 'rule-1');
+  assert.equal(migrated.state.entities.byId['entity:player'].entityId, 'entity:player');
+  assert.equal(migrated.state.relationships.entries[0].relationshipId, 'relationship-1');
+  assert.equal(migrated.state.pendingDecisionRecords[0].decisionId, 'decision-1');
+});
+
+test('valid V5 history progress remains resumable', () => {
+  const state = createChatState(NOW);
+  state.historyImportProgress = {
+    ...state.historyImportProgress,
+    branchFingerprint: 'branch',
+    messageRefsHash: 'messages',
+    chunkBoundaries: [{ start: 0, end: 1 }],
+    completedChunkIndexes: [0],
+    updatedAt: NOW,
+  };
+
+  const loaded = migrateChatState(state, NOW);
+
+  assert.equal(loaded.migrated, false);
+  assert.deepEqual(loaded.state.historyImportProgress.completedChunkIndexes, [0]);
+  assert.deepEqual(loaded.state.historyImportProgress.chunkBoundaries, [{ start: 0, end: 1 }]);
+});
+
 test('snapshot rebuild preserves soft deletion and excludes owner-less inventory', () => {
   const state = createChatState(NOW);
   state.events = [
